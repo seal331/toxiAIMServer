@@ -40,6 +40,30 @@ Public Function ConvertUnixTimestamp(ByVal lngTimestamp As Double) As Date
     ConvertUnixTimestamp = DateAdd("s", lngTimestamp, #1/1/1970#)
 End Function
 
+Public Function XORString(ByVal strInput As String, ByVal strChars As String) As Byte()
+    Dim bytOutput() As Byte
+    Dim bytInput As Byte
+    Dim bytChar As Byte
+    Dim i As Long
+    Dim lngCharsIndex As Long
+    
+    ReDim bytOutput(0 To Len(strInput) - 1)
+    
+    For i = 1 To Len(strInput)
+        ' Get the byte value of the input character
+        bytInput = Asc(Mid(strInput, i, 1))
+        
+        ' Get the byte value of the corresponding character in CHARS
+        lngCharsIndex = ((i - 1) Mod Len(strChars)) + 1
+        bytChar = Asc(Mid(strChars, lngCharsIndex, 1))
+        
+        ' XOR the values
+        bytOutput(i - 1) = bytInput Xor bytChar
+    Next i
+    
+    XORString = bytOutput
+End Function
+
 Public Function CheckLogin(ByVal strScreenName As String, _
                            ByRef bytClientPassword() As Byte, _
                            ByVal intPasswordType As PasswordType, _
@@ -47,6 +71,7 @@ Public Function CheckLogin(ByVal strScreenName As String, _
     
     Dim RS As ADODB.Recordset
     Dim oMD5Hasher As clsMD5Hash
+    Dim strPassword As String
     Dim bytPassword() As Byte
     Dim bytServerPassword() As Byte
     Dim bytMD5Pass() As Byte
@@ -67,14 +92,24 @@ Public Function CheckLogin(ByVal strScreenName As String, _
     
     LogDebug "Server", "Found user in database!"
     
-    ' Convert the password from the database to a byte array
-    bytPassword = StringToBytes(RS.Fields("password"))
+    ' Get the password from the database and convert it to a byte array
+    strPassword = RS.Fields("password")
+    bytPassword = StringToBytes(strPassword)
     
     Select Case intPasswordType
     
-        ' Checking for XOR-based passwords, used by AIM 1.x - 3.5, is not yet implemented.
+        ' Check for XOR-based passwords used prior to AIM 3.5.
         Case PasswordTypeXor
-            CheckLogin = LoginStateIncorrectPassword
+            ' TODO(subpurple):  The original Java client uses a different set of `CHARS`.
+            ' We should check for those aswell in the future.
+            bytServerPassword = XORString(strPassword, _
+                Chr(&HF3) & Chr(&H26) & Chr(&H81) & Chr(&HC4) & _
+                Chr(&H39) & Chr(&H86) & Chr(&HDB) & Chr(&H92) & _
+                Chr(&H71) & Chr(&HA3) & Chr(&HB9) & Chr(&HE6) & _
+                Chr(&H53) & Chr(&H7A) & Chr(&H95) & Chr(&H7C))
+                
+            LogDebug "Server", "Client-roasted password: " & ByteArrayToHexString(bytClientPassword)
+            LogDebug "Server", "Server-roasted password: " & ByteArrayToHexString(bytServerPassword)
             
         ' Check for MD5-based passwords used by AIM 3.5 up until 6.0, where they switched
         ' to UAS.
@@ -104,8 +139,6 @@ Public Function CheckLogin(ByVal strScreenName As String, _
             
         Case Else
             LogError "Server", "Invalid password type - defaulting to incorrect password"
-            
-            CheckLogin = LoginStateIncorrectPassword
         
     End Select
     

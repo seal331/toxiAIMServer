@@ -15,7 +15,7 @@ Option Explicit
 
 Private m_colAIMSessions As Collection
 
-Public Function Add(ByVal strScreenName As String, ByVal strIPAddress As String, ByVal intAuthSocket As Integer, ByVal strChallenge As String) As clsAIMSession
+Public Function Add(ByVal strScreenName As String, ByVal strIPAddress As String, ByVal intAuthSocket As Integer) As clsAIMSession
     Dim oAIMSession As clsAIMSession
     Set oAIMSession = New clsAIMSession
     
@@ -23,7 +23,6 @@ Public Function Add(ByVal strScreenName As String, ByVal strIPAddress As String,
         .ScreenName = strScreenName
         .IPAddress = strIPAddress
         .AuthSocket = intAuthSocket
-        .Challenge = strChallenge
     End With
     
     m_colAIMSessions.Add oAIMSession, TrimData(strScreenName)

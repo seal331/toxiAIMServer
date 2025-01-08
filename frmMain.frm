@@ -26,14 +26,14 @@ Begin VB.Form frmMain
    Begin toxiAIMServer.AIMServer BOSServer 
       Left            =   600
       Top             =   6960
-      _extentx        =   847
-      _extenty        =   847
+      _ExtentX        =   847
+      _ExtentY        =   847
    End
    Begin toxiAIMServer.AIMServer BUCPServer 
       Left            =   0
       Top             =   6960
-      _extentx        =   847
-      _extenty        =   847
+      _ExtentX        =   847
+      _ExtentY        =   847
    End
    Begin TabDlg.SSTab tabMain 
       Height          =   7215
@@ -578,10 +578,88 @@ Private Sub BUCPServer_Connected(ByVal Index As Integer)
 End Sub
 
 Private Sub BUCPServer_SignOnFrame(ByVal Index As Integer, Data() As Byte)
+    Dim oAIMSession As clsAIMSession
+    Dim bytScreenName() As Byte
+    Dim strScreenName As String
+    Dim bytRoastedPassword() As Byte
+    
     If GetByteArrayLength(Data) > 4 Then
         LogDebug "BUCP", "Client is using FLAP-level authentication"
         
-        ' TODO(subpurple): implement FLAP-level authentication
+        bytScreenName = GetTLV(&H1, Data, 4)
+        bytRoastedPassword = GetTLV(&H2, Data, 4)
+        
+        If IsBytesEmpty(bytScreenName) Or IsBytesEmpty(bytRoastedPassword) Then
+            ' I'm not sure what the correct behavior is for required TLVs being missing
+            ' via FLAP-level authentication.  I'd have to check NINA packet logs.
+            Exit Sub
+        End If
+        
+        strScreenName = BytesToString(bytScreenName)
+            
+        ' Remove any session that failed to authorize
+        For Each oAIMSession In oAIMSessionManager
+            If oAIMSession.ScreenName = TrimData(strScreenName) And oAIMSession.SignedOn = False Then
+                LogInformation "BUCP", "Removing ghost session for " & oAIMSession.ScreenName
+                oAIMSessionManager.Remove TrimData(oAIMSession.ScreenName)
+            End If
+        Next oAIMSession
+        
+        Select Case CheckLogin(strScreenName, bytRoastedPassword, PasswordTypeXor)
+            
+            Case LoginStateGood
+                LogInformation "BUCP", strScreenName & " was authenticated successfully!"
+                
+                ' Add the session to the manager
+                Set oAIMSession = oAIMSessionManager.Add(strScreenName, BUCPServer.GetIPAddress(Index), Index)
+                
+                ' Generate the cookie used to authorize with BOS
+                oAIMSession.Cookie = RandomCookie
+                    
+                ' Set-up the account with details in the database
+                Call SetupAccount(oAIMSession)
+                
+                BUCPServer.SendFrame Index, 4, LoginSuccessReply( _
+                    oAIMSession.FormattedScreenName, _
+                    oAIMSession.EmailAddress, _
+                    oAIMSession.Cookie, _
+                    oAIMSession.RegistrationStatus, _
+                    AppSettings.Connection.ServerHost & ":" & AppSettings.Connection.BosPort, _
+                    AppSettings.ErrorURLs.PasswordChange)
+            
+            Case LoginStateUnregistered
+                LogError "BUCP", strScreenName & " gave an unregistered screen name."
+                
+                BUCPServer.SendFrame Index, 4, LoginErrorReply( _
+                    strScreenName, _
+                    1, _
+                    AppSettings.ErrorURLs.UnregisteredAccount)
+                
+            Case LoginStateIncorrectPassword
+                LogError "BUCP", strScreenName & " gave a incorrect password."
+                
+                BUCPServer.SendFrame Index, 4, LoginErrorReply( _
+                    strScreenName, _
+                    5, _
+                    AppSettings.ErrorURLs.IncorrectPassword)
+                
+            Case LoginStateSuspended
+                LogError "BUCP", strScreenName & " attempted to sign on but is suspended."
+                
+                BUCPServer.SendFrame Index, 4, LoginErrorReply( _
+                    strScreenName, _
+                    17, _
+                    AppSettings.ErrorURLs.SuspendedAccount)
+                
+            Case LoginStateDeleted
+                LogError "BUCP", strScreenName & " attempted to sign on but is deleted."
+                
+                BUCPServer.SendFrame Index, 4, LoginErrorReply( _
+                    strScreenName, _
+                    8, _
+                    AppSettings.ErrorURLs.DeletedAccount)
+            
+        End Select
     End If
 End Sub
 
@@ -628,7 +706,8 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
             Next oAIMSession
             
             ' Add a new session with our screen name, IP address and challenge
-            oAIMSessionManager.Add strScreenName, BUCPServer.GetIPAddress(Index), Index, strChallenge
+            Set oAIMSession = oAIMSessionManager.Add(strScreenName, BUCPServer.GetIPAddress(Index), Index)
+            oAIMSession.Challenge = strChallenge
             
             LogInformation "BUCP", "Generated challenge: " & strChallenge & " for Screen Name: " & strScreenName
             
@@ -679,7 +758,7 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
                     ' Set-up the account with details in the database
                     Call SetupAccount(oAIMSession)
                     
-                    BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, BucpSuccessReply( _
+                    BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, LoginSuccessReply( _
                         oAIMSession.FormattedScreenName, _
                         oAIMSession.EmailAddress, _
                         oAIMSession.Cookie, _
@@ -690,7 +769,7 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
                 Case LoginStateUnregistered
                     LogError "BUCP", strScreenName & " gave an unregistered screen name."
             
-                    BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, BucpErrorReply( _
+                    BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, LoginErrorReply( _
                         strScreenName, _
                         1, _
                         AppSettings.ErrorURLs.UnregisteredAccount)
@@ -698,7 +777,7 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
                 Case LoginStateIncorrectPassword
                     LogError "BUCP", strScreenName & " gave a incorrect password."
             
-                    BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, BucpErrorReply( _
+                    BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, LoginErrorReply( _
                         strScreenName, _
                         5, _
                         AppSettings.ErrorURLs.IncorrectPassword)
@@ -706,7 +785,7 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
                 Case LoginStateSuspended
                     LogError "BUCP", strScreenName & " attempted to sign on but is suspended."
                     
-                    BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, BucpErrorReply( _
+                    BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, LoginErrorReply( _
                         strScreenName, _
                         17, _
                         AppSettings.ErrorURLs.SuspendedAccount)
@@ -714,7 +793,7 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
                 Case LoginStateDeleted
                     LogError "BUCP", strScreenName & " attempted to sign on but is deleted."
                     
-                    BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, BucpErrorReply( _
+                    BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, LoginErrorReply( _
                         strScreenName, _
                         8, _
                         AppSettings.ErrorURLs.DeletedAccount)

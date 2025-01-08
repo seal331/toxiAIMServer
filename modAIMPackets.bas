@@ -13,7 +13,7 @@ Public Function SnacError(ByVal lngCode As Long, Optional ByVal oTags As clsTLVL
     End With
 End Function
 
-Public Function BucpSuccessReply(ByVal strScreenName As String, _
+Public Function LoginSuccessReply(ByVal strScreenName As String, _
                                  ByVal strEmail As String, _
                                  ByRef bytCookie() As Byte, _
                                  ByVal lngRegistrationStatus As Long, _
@@ -30,11 +30,11 @@ Public Function BucpSuccessReply(ByVal strScreenName As String, _
         .WriteBytes PutTLV(&H8E, SingleByte(0))
         .WriteBytes PutTLV(&H1, StringToBytes(strScreenName))
         
-        BucpSuccessReply = .Buffer
+        LoginSuccessReply = .Buffer
     End With
 End Function
 
-Public Function BucpErrorReply(ByVal strScreenName As String, _
+Public Function LoginErrorReply(ByVal strScreenName As String, _
                                ByVal lngErrorCode As Long, _
                                ByVal strErrorURL As String) As Byte()
     Dim oByteWriter As New clsByteBuffer
@@ -44,7 +44,7 @@ Public Function BucpErrorReply(ByVal strScreenName As String, _
         .WriteBytes PutTLV(&H4, StringToBytes(strErrorURL))
         .WriteBytes PutTLV(&H1, StringToBytes(strScreenName))
     
-        BucpErrorReply = .Buffer
+        LoginErrorReply = .Buffer
     End With
 End Function
 
