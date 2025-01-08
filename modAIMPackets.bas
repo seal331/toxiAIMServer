@@ -22,13 +22,13 @@ Public Function BucpSuccessReply(ByVal strScreenName As String, _
     Dim oByteWriter As New clsByteBuffer
     
     With oByteWriter
-        .WriteBytes PutTLV(&H5, StrConv(strBOSAddress, vbFromUnicode))
+        .WriteBytes PutTLV(&H5, StringToBytes(strBOSAddress))
         .WriteBytes PutTLV(&H6, bytCookie)
-        .WriteBytes PutTLV(&H11, StrConv(strEmail, vbFromUnicode))
+        .WriteBytes PutTLV(&H11, StringToBytes(strEmail))
         .WriteBytes PutTLV(&H13, Word(lngRegistrationStatus))
-        .WriteBytes PutTLV(&H54, StrConv(strChangePasswdURL, vbFromUnicode))
+        .WriteBytes PutTLV(&H54, StringToBytes(strChangePasswdURL))
         .WriteBytes PutTLV(&H8E, SingleByte(0))
-        .WriteBytes PutTLV(&H1, StrConv(strScreenName, vbFromUnicode))
+        .WriteBytes PutTLV(&H1, StringToBytes(strScreenName))
         
         BucpSuccessReply = .Buffer
     End With
@@ -41,8 +41,8 @@ Public Function BucpErrorReply(ByVal strScreenName As String, _
     
     With oByteWriter
         .WriteBytes PutTLV(&H8, Word(lngErrorCode))
-        .WriteBytes PutTLV(&H4, StrConv(strErrorURL, vbFromUnicode))
-        .WriteBytes PutTLV(&H1, StrConv(strScreenName, vbFromUnicode))
+        .WriteBytes PutTLV(&H4, StringToBytes(strErrorURL))
+        .WriteBytes PutTLV(&H1, StringToBytes(strScreenName))
     
         BucpErrorReply = .Buffer
     End With
@@ -218,7 +218,7 @@ Public Function ServiceUserInfoUpdate(ByVal oAIMSession As clsAIMSession) As Byt
             .Add &H15, DWord(oAIMSession.ParentalControls)                     ' Parental controls
             .Add &H1E, DWord(oAIMSession.Subscriptions)                        ' Subscriptions
             .Add &HA, IPAddressToBytes(oAIMSession.IPAddress)                  ' IP address bytes
-            .Add &H100A, StrConv(oAIMSession.IPAddress, vbFromUnicode)         ' IP address string
+            .Add &H100A, StringToBytes(oAIMSession.IPAddress)                  ' IP address string
             .Add &H1, Word(oAIMSession.UserClass)                              ' User class
             .Add &H3, DWord(GetUnixTimestamp(oAIMSession.SignOnTime))          ' Sign on time as a UNIX timestamp
             .Add &HF, DWord(CDbl(DateDiff("s", oAIMSession.SignOnTime, Now)))  ' Online time in seconds
@@ -380,10 +380,10 @@ Public Function ServiceResponse(ByVal lngFoodgroup As Long, ByVal strAddress As 
     Dim oByteWriter As New clsByteBuffer
     
     With oByteWriter
-        .WriteBytes PutTLV(&H5, StrConv(strAddress, vbFromUnicode)) ' Service address
-        .WriteBytes PutTLV(&H6, bytCookie)                          ' Authorization cookie
-        .WriteBytes PutTLV(&HD, Word(lngFoodgroup))                 ' Service type
-        .WriteBytes PutTLV(&H8E, SingleByte(0))                     ' SSL state
+        .WriteBytes PutTLV(&H5, StringToBytes(strAddress))  ' Service address
+        .WriteBytes PutTLV(&H6, bytCookie)                  ' Authorization cookie
+        .WriteBytes PutTLV(&HD, Word(lngFoodgroup))         ' Service type
+        .WriteBytes PutTLV(&H8E, SingleByte(0))             ' SSL state
         
         LogDebug "Packet Builder", "ServiceResponse: " & ByteArrayToHexString(.Buffer)
         

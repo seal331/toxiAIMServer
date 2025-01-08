@@ -111,7 +111,7 @@ Public Function GetTLVAsString(ByVal lngType As Long) As String
     
     For i = 0 To m_lngCount - 1
         If m_udtTLVs(i).Type = lngType Then
-            GetTLVAsString = StrConv(m_udtTLVs(i).Value, vbUnicode)
+            GetTLVAsString = BytesToString(m_udtTLVs(i).Value)
             Exit Function
         End If
     Next i

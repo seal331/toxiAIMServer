@@ -40,13 +40,16 @@ Public Function ConvertUnixTimestamp(ByVal lngTimestamp As Double) As Date
     ConvertUnixTimestamp = DateAdd("s", lngTimestamp, #1/1/1970#)
 End Function
 
-Public Function CheckLogin(ByVal strScreenName As String, ByRef bytPasswordData() As Byte, ByVal intPasswordType As PasswordType, ByVal strChallenge As String) As LoginState
+Public Function CheckLogin(ByVal strScreenName As String, _
+                           ByRef bytClientPassword() As Byte, _
+                           ByVal intPasswordType As PasswordType, _
+                           Optional ByVal strChallenge As String = vbNullString) As LoginState
+    
     Dim RS As ADODB.Recordset
     Dim oMD5Hasher As clsMD5Hash
-    Dim oByteWriter As clsByteBuffer
     Dim bytPassword() As Byte
+    Dim bytServerPassword() As Byte
     Dim bytMD5Pass() As Byte
-    Dim bytHashedBuffer() As Byte
     
     ' Query the database for the user's password and status via their screen name.
     Set RS = ExecutePreparedQuery("SELECT `password`, `is_suspended`, `is_deleted` FROM `accounts` WHERE `screen_name` = ?", TrimData(strScreenName))
@@ -55,61 +58,72 @@ Public Function CheckLogin(ByVal strScreenName As String, ByRef bytPasswordData(
     If RS.EOF Then
         LogError "Server", "Unable to find user in database!"
         
+        RS.Close
+        Set RS = Nothing
+        
         CheckLogin = LoginStateUnregistered
-        GoTo Cleanup
+        Exit Function
     End If
     
-    ' Log that we found the user
     LogDebug "Server", "Found user in database!"
     
     ' Convert the password from the database to a byte array
-    bytPassword = StrConv(RS.Fields("Password"), vbFromUnicode)
+    bytPassword = StringToBytes(RS.Fields("password"))
     
-    If intPasswordType = PasswordTypeXor Then
-        ' TODO(subpurple): implement roasting for AIM 1.x - 3.5 clients
-        CheckLogin = LoginStateIncorrectPassword
-        GoTo Cleanup
-    End If
+    Select Case intPasswordType
     
-    ' Initialize MD5 hasher and byte writer
-    Set oMD5Hasher = New clsMD5Hash
-    Set oByteWriter = New clsByteBuffer
+        ' Checking for XOR-based passwords, used by AIM 1.x - 3.5, is not yet implemented.
+        Case PasswordTypeXor
+            CheckLogin = LoginStateIncorrectPassword
             
-    If intPasswordType = PasswordTypeStrongMD5 Then
-        bytMD5Pass = HexStringToByteArray(oMD5Hasher.HashBytes(bytPassword))
-    End If
+        ' Check for MD5-based passwords used by AIM 3.5 up until 6.0, where they switched
+        ' to UAS.
+        '
+        ' There exists 2 versions - a "weak" version used by clients pre-AIM 5.x, where
+        ' the data before hashing consists of the challenge, the plaintext password,
+        ' and the brand string.
+        '
+        ' However, in AIM 5.x, they switched to a "strong" version, discernible by TLV 0x4A,
+        ' which is exactly the same, however the password is now hashed in a additional layer
+        ' of MD5.
+        Case PasswordTypeWeakMD5, PasswordTypeStrongMD5
+            Set oMD5Hasher = New clsMD5Hash
+                    
+            If intPasswordType = PasswordTypeStrongMD5 Then
+                bytMD5Pass = oMD5Hasher.HashBytes(bytPassword)
+            End If
             
-    ' Write the challenge, MD5-hashed or plaintext password, and the brand string to the byte buffer.
-    oByteWriter.WriteString strChallenge
-    oByteWriter.WriteBytes IIf(intPasswordType = PasswordTypeStrongMD5, bytMD5Pass, bytPassword)
-    oByteWriter.WriteString "AOL Instant Messenger (SM)"
+            bytServerPassword = oMD5Hasher.HashBytes(ConcatBytes( _
+                StringToBytes(strChallenge), _
+                IIf(intPasswordType = PasswordTypeStrongMD5, bytMD5Pass, bytPassword), _
+                StringToBytes("AOL Instant Messenger (SM)") _
+            ))
             
-    ' Generate the server-side password hash
-    bytHashedBuffer = HexStringToByteArray(oMD5Hasher.HashBytes(oByteWriter.Buffer))
+            LogDebug "Server", "Client-generated MD5 Password Hash: " & ByteArrayToHexString(bytClientPassword)
+            LogDebug "Server", "Server-generated MD5 Password Hash: " & ByteArrayToHexString(bytServerPassword)
             
-    ' Log the client- and server-generated password hashes for debugging
-    LogDebug "Server", "Client-generated MD5 Password Hash: " & ByteArrayToHexString(bytPasswordData)
-    LogDebug "Server", "Server-generated MD5 Password Hash: " & ByteArrayToHexString(bytHashedBuffer)
-     
+        Case Else
+            LogError "Server", "Invalid password type - defaulting to incorrect password"
+            
+            CheckLogin = LoginStateIncorrectPassword
+        
+    End Select
+    
     ' Compare both hashes to each other
-    If Not IsBytesEqual(bytHashedBuffer, bytPasswordData) Then
-        CheckLogin = LoginStateIncorrectPassword
-        GoTo Cleanup
-    End If
-    
-    ' Ensure they aren't suspended or deleted
-    If RS.Fields("is_suspended") = 1 Then
-        CheckLogin = LoginStateSuspended
-    ElseIf RS.Fields("is_deleted") = 1 Then
-        CheckLogin = LoginStateDeleted
+    If IsBytesEqual(bytServerPassword, bytClientPassword) Then
+        ' Ensure they aren't suspended or deleted
+        If RS.Fields("is_suspended") = 1 Then
+            CheckLogin = LoginStateSuspended
+        ElseIf RS.Fields("is_deleted") = 1 Then
+            CheckLogin = LoginStateDeleted
+        Else
+            CheckLogin = LoginStateGood
+        End If
     Else
-        CheckLogin = LoginStateGood
+        CheckLogin = LoginStateIncorrectPassword
     End If
     
-Cleanup:
     RS.Close
-    Set oMD5Hasher = Nothing
-    Set oByteWriter = Nothing
     Set RS = Nothing
 End Function
 

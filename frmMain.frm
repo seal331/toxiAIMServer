@@ -26,14 +26,14 @@ Begin VB.Form frmMain
    Begin toxiAIMServer.AIMServer BOSServer 
       Left            =   600
       Top             =   6960
-      _ExtentX        =   847
-      _ExtentY        =   847
+      _extentx        =   847
+      _extenty        =   847
    End
    Begin toxiAIMServer.AIMServer BUCPServer 
       Left            =   0
       Top             =   6960
-      _ExtentX        =   847
-      _ExtentY        =   847
+      _extentx        =   847
+      _extenty        =   847
    End
    Begin TabDlg.SSTab tabMain 
       Height          =   7215
@@ -70,8 +70,8 @@ Begin VB.Form frmMain
       TabCaption(2)   =   "Settings"
       TabPicture(2)   =   "frmMain.frx":0038
       Tab(2).ControlEnabled=   0   'False
-      Tab(2).Control(0)=   "cmdApplySettings"
-      Tab(2).Control(1)=   "tabSettings"
+      Tab(2).Control(0)=   "tabSettings"
+      Tab(2).Control(1)=   "cmdApplySettings"
       Tab(2).ControlCount=   2
       Begin VB.CommandButton cmdApplySettings 
          Caption         =   "Apply"
@@ -144,7 +144,6 @@ Begin VB.Form frmMain
             _ExtentY        =   9551
             _Version        =   393217
             BorderStyle     =   0
-            Enabled         =   -1  'True
             ReadOnly        =   -1  'True
             ScrollBars      =   2
             TextRTF         =   $"frmMain.frx":0054
@@ -617,7 +616,7 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
                 Exit Sub
             End If
             
-            strScreenName = StrConv(bytScreenName, vbUnicode)
+            strScreenName = BytesToString(bytScreenName)
             strChallenge = RandomChallenge
             
             ' Remove any session that failed to authorize
@@ -652,7 +651,7 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
                 Exit Sub
             End If
             
-            strScreenName = StrConv(bytScreenName, vbUnicode)
+            strScreenName = BytesToString(bytScreenName)
             
             ' Retrieve the previous session
             Set oAIMSession = oAIMSessionManager.Item(TrimData(strScreenName))

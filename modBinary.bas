@@ -239,7 +239,7 @@ Public Function SWord(ByVal strValue As String) As Byte()
     ReDim bytArray(2 + Len(strValue) - 1)
     
     CopyBytes Word(Len(strValue)), 0, bytArray, 0, 2
-    CopyBytes StrConv(strValue, vbFromUnicode), 0, bytArray, 2, Len(strValue)
+    CopyBytes StringToBytes(strValue), 0, bytArray, 2, Len(strValue)
     
     SWord = bytArray
 End Function
@@ -266,7 +266,7 @@ Public Function GetSWord(ByRef bytArray() As Byte, Optional lngOffset As Long = 
     ' Copy the string data from the byte array (starting after the 2-byte length prefix)
     CopyBytes bytArray, lngOffset + 2, bStrData, 0, lngLength
     
-    GetSWord = StrConv(bStrData, vbUnicode)
+    GetSWord = BytesToString(bStrData)
 End Function
 
 ' Converts an IPv4 address string into a 4-byte array.
@@ -286,6 +286,16 @@ Public Function IPAddressToBytes(ByVal strIPAddress As String) As Byte()
     Next i
     
     IPAddressToBytes = bytIPAddress
+End Function
+
+' Converts a UTF-8 string to a byte array.
+Public Function StringToBytes(ByVal strData As String) As Byte()
+    StringToBytes = StrConv(strData, vbFromUnicode)
+End Function
+
+' Converts a byte array to a UTF-8 string.
+Public Function BytesToString(ByRef bytData() As Byte) As String
+    BytesToString = StrConv(bytData, vbUnicode)
 End Function
 
 ' Converts a decimal value into a 2-character hexadecimal string.
