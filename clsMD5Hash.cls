@@ -33,7 +33,7 @@ Private Const MS_DEFAULT_PROVIDER   As String = _
 
 Private Const HP_HASHVAL            As Long = 2
 Private Const HP_HASHSIZE           As Long = 4
-                  
+
 ' ----- Private Defines -----
 
 Private Declare Function CryptAcquireContext Lib "advapi32" Alias "CryptAcquireContextA" ( _

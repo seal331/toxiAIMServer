@@ -16,19 +16,19 @@ Option Explicit
 Private m_colAIMSessions As Collection
 
 Public Function Add(ByVal strScreenName As String, ByVal strIPAddress As String, ByVal intAuthSocket As Integer) As clsAIMSession
-    Dim oAIMSession As clsAIMSession
-    Set oAIMSession = New clsAIMSession
+    Dim oAIMUser As clsAIMSession
+    Set oAIMUser = New clsAIMSession
     
-    With oAIMSession
+    With oAIMUser
         .ScreenName = strScreenName
         .IPAddress = strIPAddress
         .AuthSocket = intAuthSocket
     End With
     
-    m_colAIMSessions.Add oAIMSession, TrimData(strScreenName)
+    m_colAIMSessions.Add oAIMUser, TrimData(strScreenName)
     
-    Set Add = oAIMSession
-    Set oAIMSession = Nothing
+    Set Add = oAIMUser
+    Set oAIMUser = Nothing
 End Function
 
 Public Sub Remove(ByVal strScreenName As String)

@@ -31,7 +31,7 @@ Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 Option Explicit
 
-Public Event Connected(ByVal Index As Integer)
+Public Event Connected(ByVal Index As Integer, ByVal RemoteHost As String)
 Public Event SignOnFrame(ByVal Index As Integer, Data() As Byte)
 Public Event DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long, ByVal Subgroup As Long, ByVal Flags As Long, ByVal RequestID As Double, SnacData() As Byte)
 Public Event SignOffFrame(ByVal Index As Integer)
@@ -85,30 +85,23 @@ Public Sub SendFrame(ByVal Index As Integer, ByVal Frame As Byte, ByRef Payload(
         Sequence(Index) = 0
     End If
     
-    Dim oPacket As New clsByteBuffer
-    With oPacket
-        .WriteByte &H2A
-        .WriteByte Frame
-        .WriteU16 Sequence(Index)
-        .WriteU16 GetByteArrayLength(Payload)
-        .WriteBytes Payload
-    End With
-    
-    sckAIMServer(Index).SendData oPacket.Buffer
+    sckAIMServer(Index).SendData ConcatBytes( _
+        SingleByte(&H2A), _
+        SingleByte(Frame), _
+        Word(Sequence(Index)), _
+        Word(GetBytesLength(Payload)), _
+        Payload _
+    )
 End Sub
 
 Public Sub SendSNAC(ByVal Index As Integer, ByVal Foodgroup As Long, ByVal Subgroup As Long, ByVal Flags As Long, ByVal RequestID As Long, ByRef Data() As Byte)
-    Dim oSnacMessage As New clsByteBuffer
-    
-    With oSnacMessage
-        .WriteU16 Foodgroup
-        .WriteU16 Subgroup
-        .WriteU16 Flags
-        .WriteU32 RequestID
-        .WriteBytes Data
-    End With
-    
-    SendFrame Index, 2, oSnacMessage.Buffer
+    SendFrame Index, 2, ConcatBytes( _
+        Word(Foodgroup), _
+        Word(Subgroup), _
+        Word(Flags), _
+        DWord(RequestID), _
+        Data _
+    )
 End Sub
 
 Public Function GetIPAddress(ByVal Index As Integer) As String
@@ -120,17 +113,26 @@ Private Function GetServerName() As String
         "Server", "")
 End Function
 
-Private Sub sckAIMServer_ConnectionRequest(Index As Integer, ByVal RequestID As Long)
+Private Function CreateSock() As Integer
     Dim i As Integer
+    
     For i = 1 To sckAIMServer.UBound
-        If sckAIMServer(i).State <> sckConnected Then Exit For
+        If sckAIMServer(i).State <> sckConnected Then
+            CreateSock = i
+            Exit Function
+        End If
     Next i
     
-    If i = sckAIMServer.Count Then
-        Load sckAIMServer(i)
-        ReDim Preserve Sequence(0 To UBound(Sequence) + 1)
-        ReDim Preserve Buffers(0 To UBound(Buffers) + 1)
-    End If
+    ReDim Preserve Sequence(0 To UBound(Sequence) + 1)
+    ReDim Preserve Buffers(0 To UBound(Buffers) + 1)
+    
+    CreateSock = sckAIMServer.UBound + 1
+    Load sckAIMServer(CreateSock)
+End Function
+
+Private Sub sckAIMServer_ConnectionRequest(Index As Integer, ByVal RequestID As Long)
+    Dim i As Integer
+    i = CreateSock
     
     sckAIMServer(i).Close
     sckAIMServer(i).Accept RequestID
@@ -138,108 +140,92 @@ Private Sub sckAIMServer_ConnectionRequest(Index As Integer, ByVal RequestID As 
     Sequence(i) = 0
     Set Buffers(i) = New clsByteBuffer
     
-    RaiseEvent Connected(i)
+    RaiseEvent Connected(i, sckAIMServer(i).RemoteHostIP)
 End Sub
 
 Private Sub sckAIMServer_DataArrival(Index As Integer, ByVal bytesTotal As Long)
     Dim oBuffer As clsByteBuffer
     Dim bytPacketSegment() As Byte
+    Dim lngOldPosition As Long
     
     Dim bytFrame As Byte
     Dim lngSequence As Long
     Dim lngPayloadLength As Long
+    Dim bytPayload() As Byte
     
-    Dim lngFoodgroup As Long
-    Dim lngSubgroup As Long
-    Dim lngFlags As Long
-    Dim lngRequestID As Long
-    Dim bytSnacData() As Byte
+    sckAIMServer(Index).GetData bytPacketSegment, vbArray + vbByte
     
-    ' Retrieve incoming data from the socket and put it into a temporary byte array.
-    sckAIMServer(Index).GetData bytPacketSegment, vbByte
-    
-    ' Retrieve the ByteBuffer instance for this socket.
     Set oBuffer = Buffers(Index)
     
-    ' Append the newly recieved segment into the buffer.
-    oBuffer.WriteBytes bytPacketSegment
+    lngOldPosition = oBuffer.Position
     
-    ' Reset position back to where it was before the segment
-    ' was appended.
-    oBuffer.Position = oBuffer.Position - GetByteArrayLength(bytPacketSegment)
+    oBuffer.WriteBytes bytPacketSegment
+    oBuffer.Position = lngOldPosition
 
     Do
-        ' Wait for more data if the buffer is empty
+        ' If the buffer's length is zero, the remote end has closed the
+        ' connection.
         If oBuffer.Length = 0 Then Exit Sub
         
-        ' Wait for more data if we haven't recieved the full FLAP header.
+        ' If the buffer length is below 6, that means we need to wait
+        ' for more data as the full FLAP header has not been recieved.
         If oBuffer.Length < 6 Then Exit Sub
         
-        ' Discard the buffer if it doesn't contain the FLAP marker as its first byte.
+        ' Discard the buffer if it doesn't contain the FLAP marker as its
+        ' first byte.
         If oBuffer.ReadByte <> &H2A Then
             oBuffer.Clear
             Exit Sub
         End If
         
         With oBuffer
-            bytFrame = .ReadByte            ' Read the frame type
-            lngSequence = .ReadU16          ' Read the sequence number
-            lngPayloadLength = .ReadU16     ' Read the payload length
+            bytFrame = .ReadByte                ' Read the FLAP frame
+            lngSequence = .ReadU16              ' Read the FLAP sequence
+            lngPayloadLength = .ReadU16         ' Read the FLAP payload length
         End With
         
         ' Wait for more data if we haven't recieved the amount of data
         ' specified in FLAP's payload length field.
         If oBuffer.Length - 6 < lngPayloadLength Then Exit Sub
         
+        ' Read the FLAP payload from the buffer.
+        bytPayload = oBuffer.ReadBytes(lngPayloadLength)
+        
         ' Route to the correct event depending on the frame.
         Select Case bytFrame
             Case 1
-                LogVerbose GetServerName, "Recieved SIGNON frame"
-                
-                RaiseEvent SignOnFrame(Index, oBuffer.ReadBytes(lngPayloadLength))
+                RaiseEvent SignOnFrame(Index, bytPayload)
             
             Case 2
-                LogVerbose GetServerName, "Recieved DATA frame"
-                
                 ' Send a SNAC error signifying a busted payload if there
                 ' isn't enough bytes for the SNAC header.
                 If lngPayloadLength < 10 Then
-                    LogWarning GetServerName, sckAIMServer(Index).RemoteHostIP & " gave an invalid SNAC header."
+                    LogError GetServerName, sckAIMServer(Index).RemoteHostIP & " gave an invalid SNAC header."
                     
                     SendSNAC Index, &H0, &H1, 0, 0, SnacError(&HE)
                 Else
-                    With oBuffer
-                        lngFoodgroup = .ReadU16                             ' Read the SNAC foodgroup
-                        lngSubgroup = .ReadU16                              ' Read the SNAC subgroup
-                        lngFlags = .ReadU16                                 ' Read the SNAC flags
-                        lngRequestID = .ReadU32                             ' Read the SNAC request ID
-                        bytSnacData = .ReadBytes(lngPayloadLength - 10)     ' Read the SNAC data
-                    End With
-                    
-                    ' Log the information about this SNAC
-                    LogVerbose GetServerName, "SNAC Foodgroup: 0x" & DecimalToHex(lngFoodgroup)
-                    LogVerbose GetServerName, "SNAC Subgroup: 0x" & DecimalToHex(lngSubgroup)
-                    LogVerbose GetServerName, "SNAC Flags: 0x" & DecimalToHex(lngFlags)
-                    LogVerbose GetServerName, "SNAC Request ID: 0x" & DecimalToHex(lngRequestID)
-                    LogVerbose GetServerName, "SNAC Data: " & ByteArrayToHexString(bytSnacData)
-                    
                     ' Route it via event
-                    RaiseEvent DataFrame(Index, lngFoodgroup, lngSubgroup, lngFlags, lngRequestID, bytSnacData)
+                    RaiseEvent DataFrame(Index, _
+                        GetWord(bytPayload), _
+                        GetWord(bytPayload, 2), _
+                        GetWord(bytPayload, 4), _
+                        GetDWord(bytPayload, 6), _
+                        OffsetBytes(bytPayload, 10))
                 End If
             
             Case 3
                 ' Error frame: ignored
                 
             Case 4
-                LogVerbose GetServerName, "Recieved SIGNOFF frame"
-                
                 RaiseEvent SignOffFrame(Index)
             
             Case 5
                 ' Keep-alive frame: ignored
                 
             Case Else
-                LogWarning GetServerName, "Recieved an unknown frame from " & sckAIMServer(Index).RemoteHostIP & ": 0x" & DecimalToHex(bytFrame)
+                LogWarning GetServerName, _
+                    "Recieved an unknown frame from " & sckAIMServer(Index).RemoteHostIP & ": " & _
+                    "0x" & DecimalToHex(bytFrame) & " with payload: " & BytesToHex(bytPayload)
         End Select
     Loop Until oBuffer.IsEnd
     

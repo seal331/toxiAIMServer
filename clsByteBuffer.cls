@@ -134,10 +134,10 @@ End Sub
 
 ' Writes an array of bytes to the buffer.
 Public Sub WriteBytes(bytValues() As Byte)
-    EnsureCapacity GetByteArrayLength(bytValues)
+    EnsureCapacity GetBytesLength(bytValues)
     
     Dim i As Long
-    For i = 0 To GetByteArrayLength(bytValues) - 1
+    For i = 0 To GetBytesLength(bytValues) - 1
         m_bytBuffer(m_lngPosition) = bytValues(i)
         m_lngPosition = m_lngPosition + 1
     Next i
@@ -162,8 +162,8 @@ Public Sub WriteU16(ByVal lngValue As Long)
 End Sub
 
 ' Writes a big endian-typed uint32 value (4 bytes) to the buffer at the current position
-Public Sub WriteU32(ByVal dblValue As Double)
-    If dblValue < 0 Or dblValue > 4294967295# Then
+Public Sub WriteU32(ByVal dblngValue As Double)
+    If dblngValue < 0 Or dblngValue > 4294967295# Then
         Err.Raise vbObjectError, "clsByteBuffer.WriteU32", "Value out of range for U32"
     End If
     
@@ -174,10 +174,10 @@ Public Sub WriteU32(ByVal dblValue As Double)
     Dim dblThird As Double
     Dim dblLSB As Double
     
-    dblMSB = Int(dblValue / &H1000000) And &HFF
-    dblSecond = Int(dblValue / &H10000) And &HFF
-    dblThird = Int(dblValue / &H100) And &HFF
-    dblLSB = dblValue - (dblMSB * &H1000000 _
+    dblMSB = Int(dblngValue / &H1000000) And &HFF
+    dblSecond = Int(dblngValue / &H10000) And &HFF
+    dblThird = Int(dblngValue / &H100) And &HFF
+    dblLSB = dblngValue - (dblMSB * &H1000000 _
                     + dblSecond * &H10000 _
                     + dblThird * &H100) And &HFF
     
@@ -243,7 +243,7 @@ End Property
 Public Sub SetBuffer(bytBuffer() As Byte)
     m_bytBuffer = bytBuffer
     m_lngPosition = 0
-    m_lngLength = GetByteArrayLength(bytBuffer)
+    m_lngLength = GetBytesLength(bytBuffer)
 End Sub
 
 ' Gets the current position within the buffer.

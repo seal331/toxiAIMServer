@@ -1,7 +1,7 @@
 Attribute VB_Name = "modLogger"
 Option Explicit
 
-' The following are additional non-stock colRS used in specific log levels:
+' The following are additional non-stock colors used in specific log levels:
 Public Const vbDarkGreen As Long = 25600
 Public Const vbDarkRed As Long = 139
 

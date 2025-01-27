@@ -10,17 +10,17 @@ Public Function InitializeDatabase() As Boolean
     On Error GoTo ErrorHandler
     
     ' Build the connection string via settings
-    strConnString = BuildConnectionString
+    strConnString = BuildConnectionString()
     
     ' Log the connection string
-    LogInformation "Database", "Using connection string: " & strConnString
+    LogInformation "Database", "Initializing connection..."
     
     ' Connect to the database via the connection string
     Set Conn = New ADODB.Connection
     Conn.Open strConnString
     
     ' Log that we successfully connected
-    LogInformation "Database", "Connected!"
+    LogInformation "Database", "Connection successful!"
     
     ' Return True and exit the initializer:
     InitializeDatabase = True
@@ -34,10 +34,7 @@ End Function
 ' Terminates the connection to the database
 Public Sub TerminateDatabase()
     If Not Conn Is Nothing Then
-        If Conn.State = adStateOpen Then
-            Conn.Close
-        End If
-        
+        If Conn.State = adStateOpen Then Conn.Close
         Set Conn = Nothing
     End If
     
@@ -74,9 +71,9 @@ Public Function ExecuteQuery(ByVal strSQL As String) As ADODB.Recordset
         Err.Raise vbObjectError, "modDatabase.ExecuteQuery", "Connection is not open"
     End If
     
-    Dim RS As ADODB.Recordset
-    Set RS = Conn.Execute(strSQL)
-    Set ExecuteQuery = RS
+    Dim rst As ADODB.Recordset
+    Set rst = Conn.Execute(strSQL)
+    Set ExecuteQuery = rst
     
     ' Log the SQL query we just executed
     LogVerbose "Database", "Executed query `" & strSQL & "`"
@@ -96,16 +93,18 @@ Public Sub ExecutePreparedNonQuery(ByVal strSQL As String, ParamArray vntParams(
         Err.Raise vbObjectError, "modDatabase.ExecutePreparedNonQuery", "Connection is not open"
     End If
     
-    Dim oCmd As ADODB.Command, i As Long
-    Set oCmd = New ADODB.Command
+    Dim cmd As ADODB.Command
+    Dim i As Long
     
-    With oCmd
+    Set cmd = New ADODB.Command
+    
+    With cmd
         .ActiveConnection = Conn
         .CommandText = strSQL
         .CommandType = adCmdText
         
         For i = LBound(vntParams) To UBound(vntParams)
-            .Parameters.Append .CreateParameter(, adVarWChar, adParamInput, Len(vntParams(i)), vntParams(i))
+            .Parameters.Append ConvertParameter(cmd, vntParams(i))
         Next i
         
         .Execute
@@ -130,20 +129,23 @@ Public Function ExecutePreparedQuery(ByVal strSQL As String, ParamArray vntParam
         Err.Raise vbObjectError, "modDatbase.ExecutedPreparedQuery", "Connection is not open"
     End If
     
-    Dim oCmd As ADODB.Command, RS As ADODB.Recordset, i As Long
-    Set oCmd = New ADODB.Command
+    Dim cmd As ADODB.Command
+    Dim rst As ADODB.Recordset
+    Dim i As Long
     
-    With oCmd
+    Set cmd = New ADODB.Command
+    
+    With cmd
         .ActiveConnection = Conn
         .CommandText = strSQL
         .CommandType = adCmdText
         
         For i = LBound(vntParams) To UBound(vntParams)
-            .Parameters.Append .CreateParameter(, adVarWChar, adParamInput, Len(vntParams(i)), vntParams(i))
+            .Parameters.Append ConvertParameter(cmd, vntParams(i))
         Next i
         
-        Set RS = .Execute
-        Set ExecutePreparedQuery = RS
+        Set rst = .Execute
+        Set ExecutePreparedQuery = rst
     End With
     
     ' Log the SQL query we just executed
@@ -156,20 +158,50 @@ ErrorHandler:
     LogError "Database", "Parameters: " & Join(vntParams, ", ")
 End Function
 
-'
+' Convert a Variant to a ADODB.Parameter
+Public Function ConvertParameter(ByRef cmd As ADODB.Command, ByVal vnt As Variant) As ADODB.Parameter
+    If IsNull(vnt) Or (IsByteArray(vnt) And IsBytesEmpty(vnt)) Then
+        Set ConvertParameter = cmd.CreateParameter(, adBSTR, adParamInput, , Null)
+        Exit Function
+    End If
+    
+    Select Case VarType(vnt)
+        Case vbArray + vbByte
+            ' Byte array (e.g. binary data)
+            Set ConvertParameter = cmd.CreateParameter(, adLongVarBinary, adParamInput, GetBytesLength(vnt), vnt)
+        
+        Case vbInteger, vbLong
+            ' Integer and long
+            Set ConvertParameter = cmd.CreateParameter(, adInteger, adParamInput, , vnt)
+        
+        Case vbSingle, vbDouble
+            ' Floating-point numbers
+            Set ConvertParameter = cmd.CreateParameter(, adDouble, adParamInput, , vnt)
+        
+        Case vbDate
+            ' Date/Time
+            Set ConvertParameter = cmd.CreateParameter(, adDBTimeStamp, adParamInput, , vnt)
+            
+        Case vbBoolean
+            ' Boolean
+            Set ConvertParameter = cmd.CreateParameter(, adBoolean, adParamInput, , vnt)
+            
+        Case Else
+            Set ConvertParameter = cmd.CreateParameter(, adBSTR, adParamInput, , vnt)
+    End Select
+End Function
+
+' Builds a connection string from the application's settings.
 Private Function BuildConnectionString() As String
     Dim strDriver As String, strHost As String, strPort As String
     Dim strUserID As String, strPassword As String, strDbName As String
     
-    With AppSettings
-        ' Read database settings:
-        strDriver = ValidateSetting(.Database.Driver, "Database driver must not be blank! Please edit it in the Settings menu.")
-        strHost = ValidateSetting(.Database.Host, "Database host must not be blank! Please edit it in the Settings menu.")
-        strPort = ValidateSetting(CStr(.Database.Port), "Database port must not be blank and must be numerical!", True)
-        strUserID = ValidateSetting(.Database.UserID, "Database User ID must not be blank! Please edit it in the Settings menu.")
-        strPassword = ValidateSetting(.Database.Password, "Database password must not be blank! Please edit it in the Settings menu.")
-        strDbName = ValidateSetting(.Database.Name, "Database name must not be blank! Please edit it in the Settings menu.")
-    End With
+    strDriver = ValidateSetting(g_strDatabaseDriver, "Database driver must not be blank! Please edit it in the Settings menu.")
+    strHost = ValidateSetting(g_strDatabaseHost, "Database host must not be blank! Please edit it in the Settings menu.")
+    strPort = ValidateSetting(g_lngDatabasePort, "Database port must not be blank and must be numerical!", True)
+    strUserID = ValidateSetting(g_strDatabaseUserID, "Database User ID must not be blank! Please edit it in the Settings menu.")
+    strPassword = ValidateSetting(g_strDatabasePassword, "Database password must not be blank! Please edit it in the Settings menu.")
+    strDbName = ValidateSetting(g_strDatabaseName, "Database name must not be blank! Please edit it in the Settings menu.")
     
     ' Construct the connection string
     BuildConnectionString = "Driver={" & strDriver & "};" & _
@@ -177,7 +209,8 @@ Private Function BuildConnectionString() As String
                             "Port=" & strPort & ";" & _
                             "User=" & strUserID & ";" & _
                             "Password=" & strPassword & ";" & _
-                            "Database=" & strDbName & ";"
+                            "Database=" & strDbName & ";" & _
+                            "Option=3;"
 End Function
 
 ' Validates the setting by raising an error if empty and/or if specified, not numerical.

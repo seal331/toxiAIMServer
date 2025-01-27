@@ -25,10 +25,14 @@ Private m_lngUserClass As Long
 Private m_lngUserStatus As Long
 Private m_dblSubscriptions As Double
 Private m_dblParentalControls As Double
+Private m_strAwayMessage As String
+Private m_strAwayMessageEncoding As String
+Private m_bytShortCapabilities() As Byte
+Private m_bytCapabilities() As Byte
 Private m_lngRegistrationStatus As Long
-Private m_dtRegistrationTime As Date
-Private m_dtSignOnTime As Date
-Private m_dtIdleTime As Date
+Private m_dtmRegistrationTime As Date
+Private m_dtmSignOnTime As Date
+Private m_dtmIdleTime As Date
 Private m_strChallenge As String
 Private m_bytCookie() As Byte
 Private m_intAuthSocket As Integer
@@ -74,8 +78,8 @@ Public Property Get FormattedScreenName() As String
     FormattedScreenName = m_strFormattedScreenName
 End Property
 
-Public Property Let FormattedScreenName(ByVal strFormattedScreenName As String)
-    m_strFormattedScreenName = strFormattedScreenName
+Public Property Let FormattedScreenName(ByVal sFormattedScreenName As String)
+    m_strFormattedScreenName = sFormattedScreenName
 End Property
 
 Public Property Get Password() As String
@@ -90,8 +94,8 @@ Public Property Get EmailAddress() As String
     EmailAddress = m_strEmailAddress
 End Property
 
-Public Property Let EmailAddress(ByVal strEmailAddress As String)
-    m_strEmailAddress = strEmailAddress
+Public Property Let EmailAddress(ByVal sEmailAddress As String)
+    m_strEmailAddress = sEmailAddress
 End Property
 
 Public Property Get IPAddress() As String
@@ -134,6 +138,38 @@ Public Property Let ParentalControls(ByVal dblParentalControls As Double)
     m_dblParentalControls = dblParentalControls
 End Property
 
+Public Property Get AwayMessage() As String
+    AwayMessage = m_strAwayMessage
+End Property
+
+Public Property Let AwayMessage(ByVal strAwayMessage As String)
+    m_strAwayMessage = strAwayMessage
+End Property
+
+Public Property Get AwayMessageEncoding() As String
+    AwayMessageEncoding = m_strAwayMessageEncoding
+End Property
+
+Public Property Let AwayMessageEncoding(ByVal strAwayMessageEncoding As String)
+    m_strAwayMessageEncoding = strAwayMessageEncoding
+End Property
+
+Public Property Get ShortCapabilities() As Byte()
+    ShortCapabilities = m_bytShortCapabilities
+End Property
+
+Public Sub SetShortCapabilities(ByRef bytShortCapabilities() As Byte)
+    m_bytShortCapabilities = bytShortCapabilities
+End Sub
+
+Public Property Get Capabilities() As Byte()
+    Capabilities = m_bytCapabilities
+End Property
+
+Public Sub SetCapabilities(ByRef bytCapabilities() As Byte)
+    m_bytCapabilities = bytCapabilities
+End Sub
+
 Public Property Get RegistrationStatus() As Long
     RegistrationStatus = m_lngRegistrationStatus
 End Property
@@ -143,27 +179,27 @@ Public Property Let RegistrationStatus(ByVal lngRegistrationStatus As Long)
 End Property
 
 Public Property Get RegistrationTime() As Date
-    RegistrationTime = m_dtRegistrationTime
+    RegistrationTime = m_dtmRegistrationTime
 End Property
 
-Public Property Let RegistrationTime(ByVal dtRegistrationTime As Date)
-    m_dtRegistrationTime = dtRegistrationTime
+Public Property Let RegistrationTime(ByVal dtmRegistrationTime As Date)
+    m_dtmRegistrationTime = dtmRegistrationTime
 End Property
 
 Public Property Get SignOnTime() As Date
-    SignOnTime = m_dtSignOnTime
+    SignOnTime = m_dtmSignOnTime
 End Property
 
-Public Property Let SignOnTime(ByVal dtSignOnTime As Date)
-    m_dtSignOnTime = dtSignOnTime
+Public Property Let SignOnTime(ByVal dtmSignOnTime As Date)
+    m_dtmSignOnTime = dtmSignOnTime
 End Property
 
 Public Property Get IdleTime() As Date
-    IdleTime = m_dtIdleTime
+    IdleTime = m_dtmIdleTime
 End Property
 
-Public Property Let IdleTime(ByVal dtIdleTime As Date)
-    m_dtIdleTime = dtIdleTime
+Public Property Let IdleTime(ByVal dtmIdleTime As Date)
+    m_dtmIdleTime = dtmIdleTime
 End Property
 
 Public Property Get Challenge() As String

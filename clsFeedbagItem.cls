@@ -6,7 +6,7 @@ BEGIN
   DataSourceBehavior  = 0  'vbNone
   MTSTransactionMode  = 0  'NotAnMTSObject
 END
-Attribute VB_Name = "clsFeedbagObject"
+Attribute VB_Name = "clsFeedbagItem"
 Attribute VB_GlobalNameSpace = False
 Attribute VB_Creatable = True
 Attribute VB_PredeclaredId = False
@@ -17,7 +17,7 @@ Private m_strName As String
 Private m_lngGroupID As Long
 Private m_lngItemID As Long
 Private m_lngClassID As Long
-Private m_oAttributes As clsTLVList
+Private m_bytAttributes() As Byte
 
 Public Property Get Name() As String
     Name = m_strName
@@ -51,18 +51,10 @@ Public Property Let ClassID(ByVal lngClassID As Long)
     m_lngClassID = lngClassID
 End Property
 
-Public Property Get Attributes() As clsTLVList
-    Set Attributes = m_oAttributes
+Public Property Get Attributes() As Byte()
+    Attributes = m_bytAttributes
 End Property
 
-Public Property Let Attributes(ByVal oAttributes As clsTLVList)
-    m_oAttributes = oAttributes
-End Property
-
-Private Sub Class_Initialize()
-    Set m_oAttributes = New clsTLVList
-End Sub
-
-Private Sub Class_Terminate()
-    Set m_oAttributes = Nothing
+Public Sub SetAttributes(ByRef bytAttributes() As Byte)
+    m_bytAttributes = bytAttributes
 End Sub

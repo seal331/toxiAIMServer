@@ -19,7 +19,7 @@ Private Const PROV_RSA_FULL = 1
 Private Const CRYPT_VERIFYCONTEXT = &HF0000000
 
 ' Converts a byte array into a space-separated hexadecimal string.
-Public Function ByteArrayToHexString(ByRef bytArray() As Byte) As String
+Public Function BytesToHex(ByRef bytArray() As Byte) As String
     Dim i As Long
     
     If IsBytesEmpty(bytArray) Then
@@ -27,23 +27,23 @@ Public Function ByteArrayToHexString(ByRef bytArray() As Byte) As String
     End If
     
     For i = LBound(bytArray) To UBound(bytArray)
-        ByteArrayToHexString = ByteArrayToHexString & DecimalToHex(CLng(bytArray(i)))
+        BytesToHex = BytesToHex & DecimalToHex(CLng(bytArray(i)))
         
-        If i <> GetByteArrayLength(bytArray) - 1 Then
-            ByteArrayToHexString = ByteArrayToHexString & " "
+        If i <> GetBytesLength(bytArray) - 1 Then
+            BytesToHex = BytesToHex & " "
         End If
     Next i
 End Function
 
 ' Converts a hexadecimal string (optionally space-separated) into a byte array.
-Public Function HexStringToByteArray(ByVal strHex As String) As Byte()
+Public Function HexToBytes(ByVal strHex As String) As Byte()
     Dim bytResult() As Byte
     Dim i As Long
     
     strHex = Replace(strHex, " ", "")   ' Remove any spaces that might be in the input string
     
     If Len(strHex) Mod 2 <> 0 Then
-        Err.Raise vbObjectError, "modBinary.HexStringToByteArray", "Invalid hex string length"
+        Err.Raise vbObjectError, "modBinary.HexToBytes", "Invalid hex string length"
     End If
     
     ReDim bytResult(Len(strHex) \ 2 - 1)
@@ -52,7 +52,7 @@ Public Function HexStringToByteArray(ByVal strHex As String) As Byte()
         bytResult((i - 1) \ 2) = HexToDecimal(Mid(strHex, i, 2))
     Next i
     
-    HexStringToByteArray = bytResult
+    HexToBytes = bytResult
 End Function
 
 ' Copies a segment of one byte array to another.
@@ -65,14 +65,14 @@ Public Sub CopyBytes( _
         Err.Raise vbObjectError, "modBinary.CopyBytes", "Invalid offset or length"
     End If
     
-    If lngSourceOffset + lngLength > GetByteArrayLength(bytSource) Or lngDestOffset + lngLength > GetByteArrayLength(bytDest) Then
+    If lngSourceOffset + lngLength > GetBytesLength(bytSource) Or lngDestOffset + lngLength > GetBytesLength(bytDest) Then
         Err.Raise vbObjectError, "modBinary.CopyBytes", "Offset and/or length exceed array bounds."
     End If
     
-    CopyMemory bytDest(lngDestOffset), bytSource(lngSourceOffset), lngLength
+    Call CopyMemory(bytDest(lngDestOffset), bytSource(lngSourceOffset), lngLength)
 End Sub
 
-' Concatenates multiple byte arrays into one.
+' Concatenates multiple byte arrays and returns a single one.
 Public Function ConcatBytes(ParamArray bytSegments() As Variant) As Byte()
     Dim i As Long
     Dim lngTotal As Long
@@ -83,12 +83,12 @@ Public Function ConcatBytes(ParamArray bytSegments() As Variant) As Byte()
     
     ' Calculate the total length of each segment
     For i = LBound(bytSegments) To UBound(bytSegments)
-        If Not IsArray(bytSegments(i)) Then
+        If Not IsByteArray(bytSegments(i)) Then
             Err.Raise vbObjectError, "modBinary.ConcatBytes", "All passed arguments must be byte arrays."
             Exit Function
         End If
         
-        lngTotal = lngTotal + GetByteArrayLength(bytSegments(i))
+        lngTotal = lngTotal + GetBytesLength(bytSegments(i))
     Next i
     
     ' Return an empty byte array if no or empty segments were provided
@@ -100,7 +100,7 @@ Public Function ConcatBytes(ParamArray bytSegments() As Variant) As Byte()
     ' Append each data segment to the result
     For i = LBound(bytSegments) To UBound(bytSegments)
         bytArray = bytSegments(i)
-        lngLength = GetByteArrayLength(bytArray)
+        lngLength = GetBytesLength(bytArray)
         
         If lngLength > 0 Then
             CopyBytes bytArray, 0, bytResult, lngPos, lngLength
@@ -112,11 +112,32 @@ Public Function ConcatBytes(ParamArray bytSegments() As Variant) As Byte()
     ConcatBytes = bytResult
 End Function
 
+' Returns a subset of a given byte array, starting at a specified offset.
+Public Function OffsetBytes(ByRef bytArray() As Byte, ByVal lngOffset As Long) As Byte()
+    Dim lngOffsettedLength As Long
+    Dim bytOffsetted() As Byte
+    
+    ' Calculate the length of the new byte array after applying the offset.
+    lngOffsettedLength = GetBytesLength(bytArray) - lngOffset
+    
+    ' If the offset results in no bytes to copy, return an uninitialized
+    ' byte array.
+    If lngOffsettedLength = 0 Then Exit Function
+
+    ' Allocate memory for the new byte array.
+    ReDim bytOffsetted(lngOffsettedLength - 1)
+    
+    ' Copy the bytes from the original array, starting at the offset, into the new array.
+    Call CopyBytes(bytArray, lngOffset, bytOffsetted, 0, lngOffsettedLength)
+
+    OffsetBytes = bytOffsetted
+End Function
+
 ' Compares two byte arrays for equality.
 Public Function IsBytesEqual(ByRef bytArrayOne() As Byte, ByRef bytArrayTwo() As Byte) As Boolean
     Dim i As Long
     
-    If GetByteArrayLength(bytArrayOne) <> GetByteArrayLength(bytArrayTwo) Then
+    If GetBytesLength(bytArrayOne) <> GetBytesLength(bytArrayTwo) Then
         IsBytesEqual = False
         Exit Function
     End If
@@ -132,27 +153,31 @@ Public Function IsBytesEqual(ByRef bytArrayOne() As Byte, ByRef bytArrayTwo() As
 End Function
 
 ' Checks if a byte array is uninitialized or empty.
-Public Function IsBytesEmpty(ByRef bytArray() As Byte) As Boolean
-    Dim lngUBound As Long
-    
+Public Function IsBytesEmpty(vntArray) As Boolean
     On Error Resume Next
-
-    lngUBound = UBound(bytArray)
-    IsBytesEmpty = (Err.Number <> 0)
+    
+    IsBytesEmpty = LBound(vntArray) > UBound(vntArray)
+    
+    If Err.Number <> 0 Then IsBytesEmpty = True
 End Function
 
 ' Returns an empty byte array.
-Public Function GetEmptyByteArray() As Byte()
+Public Function GetEmptyBytes() As Byte()
     Dim bytArray() As Byte
     
-    GetEmptyByteArray = bytArray
+    GetEmptyBytes = bytArray
 End Function
 
 ' Calculates the length of a byte array.
-Public Function GetByteArrayLength(vntArray) As Long
+Public Function GetBytesLength(ByVal vnt As Variant) As Long
     On Error Resume Next
     
-    GetByteArrayLength = UBound(vntArray) - LBound(vntArray) + 1
+    GetBytesLength = UBound(vnt) - LBound(vnt) + 1
+End Function
+
+' Determines if the passed value is a byte array.
+Public Function IsByteArray(ByVal vnt As Variant) As Boolean
+    IsByteArray = (IsArray(vnt) And (VarType(vnt) = vbArray + vbByte))
 End Function
 
 ' Generates a byte array with random values of the specified length.
@@ -195,7 +220,7 @@ End Function
 
 ' Extracts a 16-bit integer (word) in big-endian format from a byte array at the specified offset.
 Public Function GetWord(ByRef bytArray() As Byte, Optional lngOffset As Long = 0) As Long
-    If lngOffset + 2 > GetByteArrayLength(bytArray) Then
+    If lngOffset + 2 > GetBytesLength(bytArray) Then
         Err.Raise vbObjectError, "modBinary.GetWord", "Array is too small"
     End If
     
@@ -204,26 +229,26 @@ Public Function GetWord(ByRef bytArray() As Byte, Optional lngOffset As Long = 0
 End Function
 
 ' Converts a 32-bit integer (double word) into a 4-byte array in big-endian format.
-Public Function DWord(ByVal dblValue As Double) As Byte()
-    Dim dblMSB As Double, dblSecond As Double, dblThird As Double, dblLSB As Double
+Public Function DWord(ByVal dblngValue As Double) As Byte()
+    Dim dMSB As Double, dSecond As Double, dThird As Double, dLSB As Double
     
-    dblMSB = Int(dblValue / &H1000000) And &HFF
-    dblSecond = Int(dblValue / &H10000) And &HFF
-    dblThird = Int(dblValue / &H100) And &HFF
-    dblLSB = dblValue - (dblMSB * &H1000000 + dblSecond * &H10000 + dblThird * &H100) And &HFF
+    dMSB = Int(dblngValue / &H1000000) And &HFF
+    dSecond = Int(dblngValue / &H10000) And &HFF
+    dThird = Int(dblngValue / &H100) And &HFF
+    dLSB = dblngValue - (dMSB * &H1000000 + dSecond * &H10000 + dThird * &H100) And &HFF
     
     Dim bytArray(3) As Byte
-    bytArray(0) = dblMSB
-    bytArray(1) = dblSecond
-    bytArray(2) = dblThird
-    bytArray(3) = dblLSB
+    bytArray(0) = dMSB
+    bytArray(1) = dSecond
+    bytArray(2) = dThird
+    bytArray(3) = dLSB
     
     DWord = bytArray
 End Function
 
 ' Extracts a 32-bit integer (double word) in big-endian format from a byte array at the specified offset.
 Public Function GetDWord(ByRef bytArray() As Byte, Optional lngOffset As Long = 0) As Double
-    If lngOffset + 4 > GetByteArrayLength(bytArray) Then
+    If lngOffset + 4 > GetBytesLength(bytArray) Then
         Err.Raise vbObjectError, "modBinary.GetDWord", "Array is too small"
     End If
     
@@ -233,40 +258,60 @@ Public Function GetDWord(ByRef bytArray() As Byte, Optional lngOffset As Long = 
                CDbl(bytArray(lngOffset + 3))
 End Function
 
+' Converts a string into a byte array with a length prefix byte.
+Public Function SByte(ByVal strValue As String) As Byte()
+    SByte = ConcatBytes(SingleByte(Len(strValue)), StringToBytes(strValue))
+End Function
+
+' Extracts a string with a length prefix byte from a byte array at the specific offset.
+Public Function GetSByte(ByRef bytArray() As Byte, Optional lngOffset As Long = 0) As String
+    Dim bytLength As Byte
+    Dim bytStrData() As Byte
+    
+    If lngOffset + 1 > GetBytesLength(bytArray) Then
+        Exit Function
+    End If
+    
+    ' Extract the length byte from the byte array
+    bytLength = bytArray(lngOffset)
+    
+    ' Allocate space to hold the string data based on the length byte
+    ReDim bytStrData(bytLength - 1)
+    
+    ' Copy the string data from the byte array (starting after the length prefix byte)
+    CopyBytes bytArray, lngOffset + 1, bytStrData, 0, bytLength
+    
+    GetSByte = BytesToString(bytStrData)
+End Function
+
 ' Converts a string into a byte array with a 2-byte big-endian length prefix.
 Public Function SWord(ByVal strValue As String) As Byte()
-    Dim bytArray() As Byte
-    ReDim bytArray(2 + Len(strValue) - 1)
-    
-    CopyBytes Word(Len(strValue)), 0, bytArray, 0, 2
-    CopyBytes StringToBytes(strValue), 0, bytArray, 2, Len(strValue)
-    
-    SWord = bytArray
+    SWord = ConcatBytes(Word(Len(strValue)), StringToBytes(strValue))
 End Function
 
 ' Extracts a string with a 2-byte big-endian length prefix from a byte array at the specified offset.
 Public Function GetSWord(ByRef bytArray() As Byte, Optional lngOffset As Long = 0) As String
-    Dim bLength(1) As Byte      ' Temporary array to hold the 2-byte length prefix
-    Dim lngLength As Long       ' Variable to store the computed string length
-    Dim bStrData() As Byte      ' Array to store the extracted string data
+    Dim bytLength(1) As Byte
+    Dim lngLength As Long
+    Dim bytStrData() As Byte
     
-    If lngOffset + 2 > GetByteArrayLength(bytArray) Then
+    If lngOffset + 2 > GetBytesLength(bytArray) Then
         Exit Function
     End If
     
     ' Extract the 2-byte length prefix from the byte array into the temporary array
-    CopyBytes bytArray, lngOffset, bLength, 0, 2
+    CopyBytes bytArray, lngOffset, bytLength, 0, 2
     
     ' Compute the 2-byte length prefix into a value
-    lngLength = GetWord(bLength)
+    lngLength = GetWord(bytLength)
     
     ' Allocate space to hold the string data based on the extracted length
-    ReDim bStrData(lngLength - 1)
+    ReDim bytStrData(lngLength - 1)
     
     ' Copy the string data from the byte array (starting after the 2-byte length prefix)
-    CopyBytes bytArray, lngOffset + 2, bStrData, 0, lngLength
+    CopyBytes bytArray, lngOffset + 2, bytStrData, 0, lngLength
     
-    GetSWord = BytesToString(bStrData)
+    GetSWord = BytesToString(bytStrData)
 End Function
 
 ' Converts an IPv4 address string into a 4-byte array.
@@ -307,4 +352,3 @@ End Function
 Public Function HexToDecimal(ByVal strHexVal As String) As Long
     HexToDecimal = Val("&H" & strHexVal)
 End Function
-

@@ -7,7 +7,7 @@ Begin VB.Form frmMain
    Caption         =   "toxiAIMServer"
    ClientHeight    =   7485
    ClientLeft      =   45
-   ClientTop       =   435
+   ClientTop       =   540
    ClientWidth     =   10380
    BeginProperty Font 
       Name            =   "Tahoma"
@@ -23,14 +23,32 @@ Begin VB.Form frmMain
    ScaleHeight     =   7485
    ScaleWidth      =   10380
    StartUpPosition =   2  'CenterScreen
+   Begin toxiAIMServer.AIMServer DirectoryServer 
+      Left            =   2520
+      Top             =   6960
+      _ExtentX        =   847
+      _ExtentY        =   847
+   End
+   Begin toxiAIMServer.AIMServer AdminServer 
+      Left            =   1920
+      Top             =   6960
+      _ExtentX        =   847
+      _ExtentY        =   847
+   End
+   Begin toxiAIMServer.AIMServer AlertServer 
+      Left            =   1320
+      Top             =   6960
+      _ExtentX        =   847
+      _ExtentY        =   847
+   End
    Begin toxiAIMServer.AIMServer BOSServer 
-      Left            =   600
+      Left            =   720
       Top             =   6960
       _ExtentX        =   847
       _ExtentY        =   847
    End
    Begin toxiAIMServer.AIMServer BUCPServer 
-      Left            =   0
+      Left            =   120
       Top             =   6960
       _ExtentX        =   847
       _ExtentY        =   847
@@ -55,11 +73,11 @@ Begin VB.Form frmMain
       Tab(0).Control(1).Enabled=   0   'False
       Tab(0).Control(2)=   "fraServerLog"
       Tab(0).Control(2).Enabled=   0   'False
-      Tab(0).Control(3)=   "lvwOnlineUsers"
+      Tab(0).Control(3)=   "txtMessageToBroadcast"
       Tab(0).Control(3).Enabled=   0   'False
-      Tab(0).Control(4)=   "txtMessageToBroadcast"
+      Tab(0).Control(4)=   "cmdBroadcastMessage"
       Tab(0).Control(4).Enabled=   0   'False
-      Tab(0).Control(5)=   "cmdBroadcastMessage"
+      Tab(0).Control(5)=   "lvwOnlineUsers"
       Tab(0).Control(5).Enabled=   0   'False
       Tab(0).ControlCount=   6
       TabCaption(1)   =   "Account Management"
@@ -70,32 +88,9 @@ Begin VB.Form frmMain
       TabCaption(2)   =   "Settings"
       TabPicture(2)   =   "frmMain.frx":0038
       Tab(2).ControlEnabled=   0   'False
-      Tab(2).Control(0)=   "tabSettings"
-      Tab(2).Control(1)=   "cmdApplySettings"
+      Tab(2).Control(0)=   "cmdApplySettings"
+      Tab(2).Control(1)=   "tabSettings"
       Tab(2).ControlCount=   2
-      Begin VB.CommandButton cmdApplySettings 
-         Caption         =   "Apply"
-         Height          =   375
-         Left            =   -66240
-         TabIndex        =   9
-         Top             =   6720
-         Width           =   1215
-      End
-      Begin VB.CommandButton cmdBroadcastMessage 
-         Caption         =   "Broadcast Message"
-         Height          =   315
-         Left            =   5160
-         TabIndex        =   6
-         Top             =   6720
-         Width           =   1695
-      End
-      Begin VB.TextBox txtMessageToBroadcast 
-         Height          =   315
-         Left            =   120
-         TabIndex        =   5
-         Top             =   6720
-         Width           =   4935
-      End
       Begin ComctlLib.ListView lvwOnlineUsers 
          Height          =   5895
          Left            =   7080
@@ -126,6 +121,29 @@ Begin VB.Form frmMain
             Text            =   "IP Address"
             Object.Width           =   1587
          EndProperty
+      End
+      Begin VB.CommandButton cmdApplySettings 
+         Caption         =   "Apply"
+         Height          =   375
+         Left            =   -66240
+         TabIndex        =   9
+         Top             =   6720
+         Width           =   1215
+      End
+      Begin VB.CommandButton cmdBroadcastMessage 
+         Caption         =   "Broadcast Message"
+         Height          =   315
+         Left            =   5160
+         TabIndex        =   6
+         Top             =   6720
+         Width           =   1695
+      End
+      Begin VB.TextBox txtMessageToBroadcast 
+         Height          =   315
+         Left            =   120
+         TabIndex        =   5
+         Top             =   6720
+         Width           =   4935
       End
       Begin VB.Frame fraServerLog 
          Caption         =   "Server Log"
@@ -480,7 +498,7 @@ Begin VB.Form frmMain
                TabIndex        =   18
                Top             =   240
                Width           =   4575
-               Begin VB.ComboBox cmbDbDriver 
+               Begin VB.ComboBox cboDbDriver 
                   Height          =   315
                   Left            =   1320
                   TabIndex        =   31
@@ -568,22 +586,22 @@ Option Explicit
 
 Dim blnServerToggle As Boolean
 
-''''''''
-' BUCP '
-''''''''
-Private Sub BUCPServer_Connected(ByVal Index As Integer)
-    LogInformation "BUCP", BUCPServer.GetIPAddress(Index) & " connected!"
+' ========================================
+' BUCP Server
+' ========================================
+Private Sub BUCPServer_Connected(ByVal Index As Integer, ByVal RemoteHost As String)
+    LogInformation "BUCP", RemoteHost & " connected!"
     
     BUCPServer.SendFrame Index, 1, DWord(1)
 End Sub
 
 Private Sub BUCPServer_SignOnFrame(ByVal Index As Integer, Data() As Byte)
-    Dim oAIMSession As clsAIMSession
+    Dim oAIMUser As clsAIMSession
     Dim bytScreenName() As Byte
     Dim strScreenName As String
     Dim bytRoastedPassword() As Byte
     
-    If GetByteArrayLength(Data) > 4 Then
+    If GetBytesLength(Data) > 4 Then
         LogDebug "BUCP", "Client is using FLAP-level authentication"
         
         bytScreenName = GetTLV(&H1, Data, 4)
@@ -598,12 +616,11 @@ Private Sub BUCPServer_SignOnFrame(ByVal Index As Integer, Data() As Byte)
         strScreenName = BytesToString(bytScreenName)
             
         ' Remove any session that failed to authorize
-        For Each oAIMSession In oAIMSessionManager
-            If oAIMSession.ScreenName = TrimData(strScreenName) And oAIMSession.SignedOn = False Then
-                LogInformation "BUCP", "Removing ghost session for " & oAIMSession.ScreenName
-                oAIMSessionManager.Remove TrimData(oAIMSession.ScreenName)
+        For Each oAIMUser In oAIMSessionManager
+            If oAIMUser.ScreenName = TrimData(strScreenName) And oAIMUser.SignedOn = False Then
+                oAIMSessionManager.Remove TrimData(oAIMUser.ScreenName)
             End If
-        Next oAIMSession
+        Next oAIMUser
         
         Select Case CheckLogin(strScreenName, bytRoastedPassword, PasswordTypeXor)
             
@@ -611,21 +628,21 @@ Private Sub BUCPServer_SignOnFrame(ByVal Index As Integer, Data() As Byte)
                 LogInformation "BUCP", strScreenName & " was authenticated successfully!"
                 
                 ' Add the session to the manager
-                Set oAIMSession = oAIMSessionManager.Add(strScreenName, BUCPServer.GetIPAddress(Index), Index)
+                Set oAIMUser = oAIMSessionManager.Add(strScreenName, BUCPServer.GetIPAddress(Index), Index)
                 
                 ' Generate the cookie used to authorize with BOS
-                oAIMSession.Cookie = RandomCookie
+                oAIMUser.Cookie = RandomCookie
                     
                 ' Set-up the account with details in the database
-                Call SetupAccount(oAIMSession)
+                Call SetupAccount(oAIMUser)
                 
                 BUCPServer.SendFrame Index, 4, LoginSuccessReply( _
-                    oAIMSession.FormattedScreenName, _
-                    oAIMSession.EmailAddress, _
-                    oAIMSession.Cookie, _
-                    oAIMSession.RegistrationStatus, _
-                    AppSettings.Connection.ServerHost & ":" & AppSettings.Connection.BosPort, _
-                    AppSettings.ErrorURLs.PasswordChange)
+                    oAIMUser.FormattedScreenName, _
+                    oAIMUser.EmailAddress, _
+                    oAIMUser.Cookie, _
+                    oAIMUser.RegistrationStatus, _
+                    g_strServerHost & ":" & g_lngBosPort, _
+                    g_strPasswordChangeURL)
             
             Case LoginStateUnregistered
                 LogError "BUCP", strScreenName & " gave an unregistered screen name."
@@ -633,7 +650,7 @@ Private Sub BUCPServer_SignOnFrame(ByVal Index As Integer, Data() As Byte)
                 BUCPServer.SendFrame Index, 4, LoginErrorReply( _
                     strScreenName, _
                     1, _
-                    AppSettings.ErrorURLs.UnregisteredAccount)
+                    g_strUnregisteredAccountURL)
                 
             Case LoginStateIncorrectPassword
                 LogError "BUCP", strScreenName & " gave a incorrect password."
@@ -641,7 +658,7 @@ Private Sub BUCPServer_SignOnFrame(ByVal Index As Integer, Data() As Byte)
                 BUCPServer.SendFrame Index, 4, LoginErrorReply( _
                     strScreenName, _
                     5, _
-                    AppSettings.ErrorURLs.IncorrectPassword)
+                    g_strIncorrectPasswordURL)
                 
             Case LoginStateSuspended
                 LogError "BUCP", strScreenName & " attempted to sign on but is suspended."
@@ -649,7 +666,7 @@ Private Sub BUCPServer_SignOnFrame(ByVal Index As Integer, Data() As Byte)
                 BUCPServer.SendFrame Index, 4, LoginErrorReply( _
                     strScreenName, _
                     17, _
-                    AppSettings.ErrorURLs.SuspendedAccount)
+                    g_strSuspendedAccountURL)
                 
             Case LoginStateDeleted
                 LogError "BUCP", strScreenName & " attempted to sign on but is deleted."
@@ -657,7 +674,7 @@ Private Sub BUCPServer_SignOnFrame(ByVal Index As Integer, Data() As Byte)
                 BUCPServer.SendFrame Index, 4, LoginErrorReply( _
                     strScreenName, _
                     8, _
-                    AppSettings.ErrorURLs.DeletedAccount)
+                    g_strDeletedAccountURL)
             
         End Select
     End If
@@ -665,17 +682,17 @@ End Sub
 
 Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long, ByVal Subgroup As Long, ByVal Flags As Long, ByVal RequestID As Double, SnacData() As Byte)
     Dim oByteBuffer As clsByteBuffer
-    Dim oAIMSession As clsAIMSession
+    Dim oAIMUser As clsAIMSession
     Dim strChallenge As String
     Dim bytScreenName() As Byte
     Dim strScreenName As String
-    Dim enPasswordType As PasswordType
+    Dim enuPasswordType As PasswordType
     Dim bytPasswordHash() As Byte
     
     If Foodgroup <> &H17 Then
-        LogWarning "BUCP", "Client attempted to access foodgroup outside of BUCP"
+        LogError "BUCP", "Unavailable SNAC - foodgroup: 0x" & DecimalToHex(Foodgroup) & ", subgroup: 0x" & DecimalToHex(Subgroup)
         
-        BOSServer.SendSNAC Index, Foodgroup, &H1, 0, 0, SnacError(&H4)
+        'BUCPServer.SendSNAC Index, Foodgroup, &H1, 0, 0, SnacError(&H4)
         Exit Sub
     End If
     
@@ -698,18 +715,18 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
             strChallenge = RandomChallenge
             
             ' Remove any session that failed to authorize
-            For Each oAIMSession In oAIMSessionManager
-                If oAIMSession.ScreenName = TrimData(strScreenName) And oAIMSession.SignedOn = False Then
-                    LogInformation "BUCP", "Removing ghost session for " & oAIMSession.ScreenName
-                    oAIMSessionManager.Remove TrimData(oAIMSession.ScreenName)
+            For Each oAIMUser In oAIMSessionManager
+                If oAIMUser.ScreenName = TrimData(strScreenName) And oAIMUser.SignedOn = False Then
+                    LogInformation "BUCP", "Removing ghost session for " & oAIMUser.ScreenName
+                    oAIMSessionManager.Remove TrimData(oAIMUser.ScreenName)
                 End If
-            Next oAIMSession
+            Next oAIMUser
             
             ' Add a new session with our screen name, IP address and challenge
-            Set oAIMSession = oAIMSessionManager.Add(strScreenName, BUCPServer.GetIPAddress(Index), Index)
-            oAIMSession.Challenge = strChallenge
+            Set oAIMUser = oAIMSessionManager.Add(strScreenName, BUCPServer.GetIPAddress(Index), Index)
+            oAIMUser.Challenge = strChallenge
             
-            LogInformation "BUCP", "Generated challenge: " & strChallenge & " for Screen Name: " & strScreenName
+            LogInformation "BUCP", strScreenName & " generated challenge: " & strChallenge
             
             LogDebug "BUCP", "Sending BUCP__CHALLENGE_RESPONSE"
             BUCPServer.SendSNAC Index, Foodgroup, &H7, 0, 0, SWord(strChallenge)
@@ -733,38 +750,38 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
             strScreenName = BytesToString(bytScreenName)
             
             ' Retrieve the previous session
-            Set oAIMSession = oAIMSessionManager.Item(TrimData(strScreenName))
-            If oAIMSession Is Nothing Then
+            Set oAIMUser = oAIMSessionManager.Item(TrimData(strScreenName))
+            If oAIMUser Is Nothing Then
                 LogError "BUCP", "Previous session was not found!"
                 Exit Sub
             End If
             
             ' Verify password via the stronger method if TLV 0x4A is present
             If TLVExists(&H4A, SnacData) Then
-                enPasswordType = PasswordTypeStrongMD5
+                enuPasswordType = PasswordTypeStrongMD5
             Else
-                enPasswordType = PasswordTypeWeakMD5
+                enuPasswordType = PasswordTypeWeakMD5
             End If
             
             ' TODO(subpurple): add state for sn format issues (e.g. zero or under 3 length)
-            Select Case CheckLogin(strScreenName, bytPasswordHash, enPasswordType, oAIMSession.Challenge)
+            Select Case CheckLogin(strScreenName, bytPasswordHash, enuPasswordType, oAIMUser.Challenge)
             
                 Case LoginStateGood
                     LogInformation "BUCP", strScreenName & " was authenticated successfully!"
             
                     ' Generate the cookie used to authorize with BOS
-                    oAIMSession.Cookie = RandomCookie
+                    oAIMUser.Cookie = RandomCookie
                     
                     ' Set-up the account with details in the database
-                    Call SetupAccount(oAIMSession)
+                    Call SetupAccount(oAIMUser)
                     
                     BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, LoginSuccessReply( _
-                        oAIMSession.FormattedScreenName, _
-                        oAIMSession.EmailAddress, _
-                        oAIMSession.Cookie, _
-                        oAIMSession.RegistrationStatus, _
-                        AppSettings.Connection.ServerHost & ":" & AppSettings.Connection.BosPort, _
-                        AppSettings.ErrorURLs.PasswordChange)
+                        oAIMUser.FormattedScreenName, _
+                        oAIMUser.EmailAddress, _
+                        oAIMUser.Cookie, _
+                        oAIMUser.RegistrationStatus, _
+                        g_strServerHost & ":" & g_lngBosPort, _
+                        g_strPasswordChangeURL)
             
                 Case LoginStateUnregistered
                     LogError "BUCP", strScreenName & " gave an unregistered screen name."
@@ -772,7 +789,7 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
                     BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, LoginErrorReply( _
                         strScreenName, _
                         1, _
-                        AppSettings.ErrorURLs.UnregisteredAccount)
+                        g_strUnregisteredAccountURL)
                 
                 Case LoginStateIncorrectPassword
                     LogError "BUCP", strScreenName & " gave a incorrect password."
@@ -780,7 +797,7 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
                     BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, LoginErrorReply( _
                         strScreenName, _
                         5, _
-                        AppSettings.ErrorURLs.IncorrectPassword)
+                        g_strIncorrectPasswordURL)
                 
                 Case LoginStateSuspended
                     LogError "BUCP", strScreenName & " attempted to sign on but is suspended."
@@ -788,7 +805,7 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
                     BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, LoginErrorReply( _
                         strScreenName, _
                         17, _
-                        AppSettings.ErrorURLs.SuspendedAccount)
+                        g_strSuspendedAccountURL)
                 
                 Case LoginStateDeleted
                     LogError "BUCP", strScreenName & " attempted to sign on but is deleted."
@@ -796,7 +813,7 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
                     BUCPServer.SendSNAC Index, &H1, &H3, 0, 0, LoginErrorReply( _
                         strScreenName, _
                         8, _
-                        AppSettings.ErrorURLs.DeletedAccount)
+                        g_strDeletedAccountURL)
                         
             End Select
             
@@ -804,57 +821,53 @@ Private Sub BUCPServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long
 End Sub
 
 Private Sub BUCPServer_SignOffFrame(ByVal Index As Integer)
-    BUCPServer.SendFrame Index, 4, GetEmptyByteArray
+    BUCPServer.SendFrame Index, 4, GetEmptyBytes
     BUCPServer.CloseSocket Index
 End Sub
 
 Private Sub BUCPServer_Disconnected(ByVal Index As Integer)
-    Dim oAIMSession As clsAIMSession
+    Dim oAIMUser As clsAIMSession
     
-    For Each oAIMSession In oAIMSessionManager
-        If oAIMSession.Authorized = False And oAIMSession.AuthSocket = Index Then
-            LogDebug "BUCP", "Removing unauthorized session for " & oAIMSession.ScreenName
-            oAIMSessionManager.Remove TrimData(oAIMSession.ScreenName)
+    For Each oAIMUser In oAIMSessionManager
+        If oAIMUser.Authorized = False And oAIMUser.AuthSocket = Index Then
+            LogDebug "BUCP", "Removing unauthorized session for " & oAIMUser.ScreenName
+            oAIMSessionManager.Remove TrimData(oAIMUser.ScreenName)
         End If
-    Next oAIMSession
+    Next oAIMUser
 End Sub
 
-'''''''
-' BOS '
-'''''''
-Private Sub BOSServer_Connected(ByVal Index As Integer)
-    LogInformation "BOS", BUCPServer.GetIPAddress(Index) & " connected!"
+' ========================================
+' BOS Server
+' ========================================
+Private Sub BOSServer_Connected(ByVal Index As Integer, ByVal RemoteHost As String)
+    LogInformation "BOS", RemoteHost & " connected!"
     
     BOSServer.SendFrame Index, 1, DWord(1)
 End Sub
 
 Private Sub BOSServer_SignOnFrame(ByVal Index As Integer, Data() As Byte)
     Dim bytCookie() As Byte
-    Dim oAIMSession As clsAIMSession
+    Dim oAIMUser As clsAIMSession
     
-    If GetByteArrayLength(Data) > 4 Then
+    If GetBytesLength(Data) > 4 Then
         bytCookie = GetTLV(&H6, Data, 4)
         
-        For Each oAIMSession In oAIMSessionManager
-            If IsBytesEqual(oAIMSession.Cookie, bytCookie) Then
-                LogInformation "BOS", "Found session for " & oAIMSession.FormattedScreenName & "!"
+        For Each oAIMUser In oAIMSessionManager
+            If IsBytesEqual(oAIMUser.Cookie, bytCookie) Then
+                LogInformation "BOS", "Found session for " & oAIMUser.FormattedScreenName & "!"
                 
-                ' Assign the index for the session to our session
-                oAIMSession.Index = Index
+                oAIMUser.Index = Index
                 
-                ' Send OSERVICE__HOST_ONLINE with our list of supported foodgroups
                 LogDebug "BOS", "Sending OSERVICE__HOST_ONLINE"
                 
                 BOSServer.SendSNAC Index, &H1, &H3, 0, 0, ServiceHostOnline
                 Exit Sub
             End If
-        Next oAIMSession
+        Next oAIMUser
         
-        ' Log that we were unable to find the cookie that the client provided
-        LogError "BOS", "Unable to find session! Client provided cookie: " & ByteArrayToHexString(bytCookie)
+        LogError "BOS", "Unable to find session! Client provided cookie: " & BytesToHex(bytCookie)
     End If
     
-    ' Disconnect the client
     BOSServer.CloseSocket Index
 End Sub
 
@@ -862,29 +875,19 @@ Private Sub BOSServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long,
     Dim oByteReader As New clsByteBuffer
     Dim oByteWriter As New clsByteBuffer
     Dim oTLVList As New clsTLVList
-    Dim oAIMSession As clsAIMSession
-    Dim oAIMSessionTemp As clsAIMSession
-    Dim lngFoodgroup As Long
-    Dim strAddress As String
-    Dim bytCookie() As Byte
-    Dim dblFeedbagTimestamp As Double
-    Dim lngFeedbagItems As Long
-    Dim strName As String
-    Dim lngGroupID As Long
-    Dim lngItemID As Long
-    Dim lngClassID As Long
-    Dim oListItem As ListItem
+    Dim oAIMUser As clsAIMSession
+    Dim oAIMUserTemp As clsAIMSession
 
     ' Retrieve the client's session
-    For Each oAIMSessionTemp In oAIMSessionManager
-        If oAIMSessionTemp.Index = Index Then
-            Set oAIMSession = oAIMSessionTemp
+    For Each oAIMUserTemp In oAIMSessionManager
+        If oAIMUserTemp.Index = Index Then
+            Set oAIMUser = oAIMUserTemp
         End If
-    Next oAIMSessionTemp
+    Next oAIMUserTemp
     
     ' Verify we found the session and send a SNAC error signifying to the client
     ' that we haven't logged in if not.
-    If oAIMSession Is Nothing Then
+    If oAIMUser Is Nothing Then
         LogError "BOS", "Unable to find session!"
         
         BOSServer.SendSNAC Index, Foodgroup, &H1, 0, 0, SnacError(&H4)
@@ -903,21 +906,19 @@ Private Sub BOSServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long,
                 ' =============================================================
                     LogDebug "BOS", "Recieved OSERVICE__CLIENT_ONLINE"
                     
-                    oByteReader.SetBuffer SnacData
+                    ' Log that this user has signed on successfully
+                    LogInformation "BOS", oAIMUser.FormattedScreenName & " has signed on successfully."
                     
-                    With oByteReader
-                        Do Until .IsEnd
-                            LogVerbose "BOS", _
-                                "Foodgroup 0x" & DecimalToHex(.ReadU16) & " / " & _
-                                "version 0x" & DecimalToHex(.ReadU16) & " / " & _
-                                "tool ID: 0x" & DecimalToHex(.ReadU16) & " / " & _
-                                "tool version: 0x" & DecimalToHex(.ReadU16)
-                        Loop
-                    End With
+                    ' Set the signed on flag for this session
+                    oAIMUser.SignedOn = True
                 
                 ' =============================================================
                 Case &H4        ' OSERVICE__SERVICE_REQUEST
                 ' =============================================================
+                    Dim lngFoodgroup As Long
+                    Dim strAddress As String
+                    Dim bytCookie() As Byte
+                    
                     LogDebug "BOS", "Recieved OSERVICE__SERVICE_REQUEST"
                     
                     ' Get the service the client is requesting
@@ -927,27 +928,31 @@ Private Sub BOSServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long,
                     Select Case lngFoodgroup
                         Case &H18
                             LogInformation "BOS", "Client requested ALERT service"
-                            strAddress = AppSettings.Connection.ServerHost & ":" & AppSettings.Connection.AlertPort
+                            strAddress = g_strServerHost & ":" & g_lngAlertPort
                             
                         Case &H7
                             LogInformation "BOS", "Client requested ADMIN service"
-                            strAddress = AppSettings.Connection.ServerHost & ":" & AppSettings.Connection.AdminPort
+                            strAddress = g_strServerHost & ":" & g_lngAdminPort
                             
                         Case &HF
                            LogInformation "BOS", "Client requested ODIR service"
-                           strAddress = AppSettings.Connection.ServerHost & ":" & AppSettings.Connection.DirectoryPort
+                           strAddress = g_strServerHost & ":" & g_lngDirectoryPort
                             
                         Case Else
                             LogError "BOS", "Client requested unknown service: 0x" & DecimalToHex(lngFoodgroup)
                             
-                            BOSServer.SendSNAC Index, &H1, &H1, 0, 0, SnacError(&H6)
+                            BOSServer.SendSNAC Index, &H1, &H1, 0, RequestID, SnacError(&H5)
                             Exit Sub
                     End Select
                     
-                    ' Since I don't currently have OSCAR services implemented, we will always
-                    ' send a SNAC error back meaning the service isn't available right now.
-                    LogWarning "BOS", "OSCAR services not implemented - sending back SNAC error"
-                    BOSServer.SendSNAC Index, &H1, &H1, 0, 0, SnacError(&H5)
+                    ' Generate a cookie
+                    bytCookie = RandomCookie
+                    
+                    ' Add the service to the session with the foodgroup and cookie
+                    oAIMUser.AddService lngFoodgroup, bytCookie
+                    
+                    LogDebug "BOS", "Sending OSERVICE__SERVICE_RESPONSE"
+                    BOSServer.SendSNAC Index, &H1, &H5, 0, RequestID, ServiceResponse(lngFoodgroup, strAddress, bytCookie)
                     
                 ' =============================================================
                 Case &H6        ' OSERVICE__RATE_PARAMS_QUERY
@@ -970,8 +975,28 @@ Private Sub BOSServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long,
                     LogDebug "BOS", "Recieved OSERVICE__USER_INFO_QUERY"
                     
                     LogDebug "BOS", "Sending OSERVICE__USER_INFO_UPDATE"
-                    BOSServer.SendSNAC Index, &H1, &HF, 0, 0, ServiceUserInfoUpdate(oAIMSession)
+                    BOSServer.SendSNAC Index, &H1, &HF, 0, 0, ServiceSelfInfo(oAIMUser)
                 
+                ' =============================================================
+                Case &H11       ' OSERVICE__IDLE_NOTIFICATION
+                ' =============================================================
+                    Dim dblIdleTime As Double
+                    
+                    LogDebug "BOS", "Recieved OSERVICE__IDLE_NOTIFICATION"
+                    
+                    dblIdleTime = GetDWord(SnacData)
+                    
+                    If dblIdleTime > 0 Then
+                        LogInformation "BOS", oAIMUser.FormattedScreenName & " has been idle for " & dblIdleTime & " seconds"
+                        
+                        oAIMUser.Idle = True
+                        oAIMUser.IdleTime = Now
+                    Else
+                        LogInformation "BOS", oAIMUser.FormattedScreenName & " is no longer idle"
+                        
+                        oAIMUser.Idle = False
+                    End If
+                    
                 ' =============================================================
                 Case &H16       ' OSERVICE__NOOP
                 ' =============================================================
@@ -1006,27 +1031,59 @@ Private Sub BOSServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long,
                 ' =============================================================
                 Case &H4        ' LOCATE__SET_INFO
                 ' =============================================================
+                    Dim bytCapabilities() As Byte
+                    
                     LogDebug "BOS", "Recieved LOCATE__SET_INFO"
                     
                     oTLVList.LoadChain SnacData
                     
-                    ' TODO(subpurple): in the future, this should be saved in either the database or session
+                    If oTLVList.ContainsTLV(&H1) Then   ' User profile encoding
+                        ' TODO(subpurple)
+                        LogInformation "BOS", oAIMUser.FormattedScreenName & " set user profile encoding: " & oTLVList.GetTLVAsString(&H1)
+                    End If
+                    
                     If oTLVList.ContainsTLV(&H2) Then   ' User profile
-                        LogInformation "BOS", oAIMSession.FormattedScreenName & " set user profile: " & oTLVList.GetTLVAsString(&H2)
+                        ' TODO(subpurple)
+                        LogInformation "BOS", oAIMUser.FormattedScreenName & " set user profile: " & oTLVList.GetTLVAsString(&H2)
+                    End If
+                    
+                    If oTLVList.ContainsTLV(&H3) Then   ' Away message encoding
+                        oAIMUser.AwayMessageEncoding = oTLVList.GetTLVAsString(&H3)
+                        
+                        LogInformation "BOS", oAIMUser.FormattedScreenName & " set away message encoding: " & oTLVList.GetTLVAsString(&H3)
                     End If
                     
                     If oTLVList.ContainsTLV(&H4) Then   ' Away message
-                        LogInformation "BOS", oAIMSession.FormattedScreenName & " set away message: " & oTLVList.GetTLVAsString(&H4)
+                        oAIMUser.AwayMessage = oTLVList.GetTLVAsString(&H4)
+                        
+                        LogInformation "BOS", oAIMUser.FormattedScreenName & " set away message: " & oTLVList.GetTLVAsString(&H4)
                     End If
                     
                     If oTLVList.ContainsTLV(&H5) Then   ' Client capabilities
-                        LogInformation "BOS", oAIMSession.FormattedScreenName & " set capabilities"
+                        bytCapabilities = oTLVList.GetTLV(&H5)
+                        
+                        If GetBytesLength(bytCapabilities) Mod 16 Then
+                            LogError "BOS", "Capability list must be an array of 16-byte values!"
+                            Exit Sub
+                        End If
+                        
+                        oAIMUser.SetCapabilities bytCapabilities
+                        
+                        LogInformation "BOS", oAIMUser.FormattedScreenName & " set capabilities."
                     End If
                 
                 ' =============================================================
-                Case &H8        ' LOCATE__WATCHER_NOTIFICATION
+                Case &HB        ' LOCATE__GET_DIR_INFO
                 ' =============================================================
-                    LogDebug "BOS", "Recieved LOCATE__WATCHER_NOTIFICATION: " & ByteArrayToHexString(SnacData)
+                    Dim strScreenName As String
+                    
+                    strScreenName = GetSByte(SnacData)
+                    
+                    LogDebug "BOS", "Recieved LOCATE__GET_DIR_INFO"
+                    LogInformation "BOS", "Getting directory info for " & strScreenName
+                    
+                    ' TODO(subpurple)
+                    ' should use modServer.GetDirectoryInfo(...) for this
                     
                 Case Else
                     LogError "BOS", "Unknown SNAC - foodgroup: LOCATE, subgroup: 0x" & DecimalToHex(Subgroup)
@@ -1060,6 +1117,17 @@ Private Sub BOSServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long,
                 Case &H2        ' ICBM__ADD_PARAMETERS
                 ' =============================================================
                     LogDebug "BOS", "Recieved ICBM__ADD_PARAMETERS"
+                    
+                    oByteReader.SetBuffer SnacData
+                    
+                    With oByteReader
+                        LogDebug "BOS", "Client set ICBM parameters for channel 0x" & DecimalToHex(.ReadU16)
+                        LogDebug "BOS", "ICBM flags: 0x" & DecimalToHex(.ReadU32)
+                        LogDebug "BOS", "Maximum incoming ICBM length: " & .ReadU16
+                        LogDebug "BOS", "Maximum sender warning level: " & .ReadU16
+                        LogDebug "BOS", "Maximum reciever warning level: " & .ReadU16
+                        LogDebug "BOS", "Minimum ICBM interval (milliseconds): " & .ReadU32
+                    End With
                     
                 ' =============================================================
                 Case &H4        ' ICBM__PARAMETER_QUERY
@@ -1111,14 +1179,17 @@ Private Sub BOSServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long,
                     LogDebug "BOS", "Recieved FEEDBAG__QUERY"
                     
                     LogDebug "BOS", "Sending FEEDBAG__REPLY"
-                    BOSServer.SendSNAC Index, &H13, &H6, 0, RequestID, FeedbagReply(GetFeedbagData(oAIMSession))
+                    BOSServer.SendSNAC Index, &H13, &H6, 0, RequestID, FeedbagReply(FeedbagGetTime(oAIMUser), FeedbagGetData(oAIMUser))
                     
                 ' =============================================================
                 Case &H5        ' FEEDBAG__QUERY_IF_MODIFIED
                 ' =============================================================
+                    Dim dblFeedbagTimestamp As Double
+                    Dim lngFeedbagItems As Long
+                    
                     LogDebug "BOS", "Recieved FEEDBAG__QUERY_IF_MODIFIED"
                     
-                    If GetByteArrayLength(SnacData) <> 6 Then
+                    If GetBytesLength(SnacData) <> 6 Then
                         LogError "BOS", "Client gave wrong data length to FEEDBAG__QUERY_IF_MODIFIED!"
                         
                         BOSServer.SendSNAC Index, &H13, &H1, 0, RequestID, SnacError(&HE)
@@ -1130,12 +1201,12 @@ Private Sub BOSServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long,
                     dblFeedbagTimestamp = oByteReader.ReadU32
                     lngFeedbagItems = oByteReader.ReadU16
                     
-                    LogInformation "BOS", "Cached feedbag timestamp: " & Format(ConvertUnixTimestamp(dblFeedbagTimestamp), "mm/dd/yyyy h:mm:ss AM/PM")
-                    LogInformation "BOS", "Cached feedbag items: " & lngFeedbagItems
+                    LogDebug "BOS", "Cached feedbag timestamp: " & Format(ConvertUnixTimestamp(dblFeedbagTimestamp), "mm/dd/yyyy h:mm:ss AM/PM")
+                    LogDebug "BOS", "Cached feedbag items: " & lngFeedbagItems
                     
-                    If FeedbagCheckIfNew(oAIMSession, dblFeedbagTimestamp, lngFeedbagItems) Then
+                    If FeedbagIsModified(oAIMUser, dblFeedbagTimestamp, lngFeedbagItems) = True Then
                         LogDebug "BOS", "Sending FEEDBAG__REPLY"
-                        BOSServer.SendSNAC Index, &H13, &H6, 0, RequestID, FeedbagReply(GetFeedbagData(oAIMSession))
+                        BOSServer.SendSNAC Index, &H13, &H6, 0, RequestID, FeedbagReply(FeedbagGetTime(oAIMUser), FeedbagGetData(oAIMUser))
                     Else
                         LogDebug "BOS", "Sending FEEDBAG__REPLY_NOT_MODIFIED"
                         BOSServer.SendSNAC Index, &H13, &HF, 0, RequestID, FeedbagReplyNotModified(dblFeedbagTimestamp, lngFeedbagItems)
@@ -1146,7 +1217,7 @@ Private Sub BOSServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long,
                 ' =============================================================
                     LogDebug "BOS", "Recieved FEEDBAG__USE"
                     
-                    LogInformation "BOS", oAIMSession.FormattedScreenName & " has recieved their buddy list."
+                    LogInformation "BOS", oAIMUser.FormattedScreenName & " has recieved their buddy list."
                 
                 ' =============================================================
                 Case &H8            ' FEEDBAG__INSERT_ITEM
@@ -1157,19 +1228,17 @@ Private Sub BOSServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long,
                     
                     With oByteReader
                         Do Until .IsEnd
-                            strName = .ReadStringU16
-                            lngGroupID = .ReadU16
-                            lngItemID = .ReadU16
-                            lngClassID = .ReadU16
-                            
-                            oTLVList.LoadChain .ReadBytes(.ReadU16)
-                            
-                            oByteWriter.WriteU16 FeedbagAddItem(oAIMSession, strName, lngGroupID, lngItemID, lngClassID, oTLVList)
+                            oByteWriter.WriteU16 FeedbagAddItem(oAIMUser, _
+                                .ReadStringU16, _
+                                .ReadU16, _
+                                .ReadU16, _
+                                .ReadU16, _
+                                .ReadBytes(.ReadU16))
                         Loop
                     End With
                     
                     LogDebug "BOS", "Sending FEEDBAG__STATUS"
-                    BOSServer.SendSNAC Index, &H13, &HE, 0, RequestID, FeedbagStatus(oByteWriter.Buffer)
+                    BOSServer.SendSNAC Index, &H13, &HE, 0, RequestID, oByteWriter.Buffer
                     
                 ' =============================================================
                 Case &H9        ' FEEDBAG__UPDATE_ITEM
@@ -1180,19 +1249,17 @@ Private Sub BOSServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long,
                     
                     With oByteReader
                         Do Until .IsEnd
-                            strName = .ReadStringU16
-                            lngGroupID = .ReadU16
-                            lngItemID = .ReadU16
-                            lngClassID = .ReadU16
-                            
-                            oTLVList.LoadChain .ReadBytes(.ReadU16)
-                            
-                            oByteWriter.WriteU16 FeedbagUpdateItem(oAIMSession, strName, lngGroupID, lngItemID, lngClassID, oTLVList)
+                            oByteWriter.WriteU16 FeedbagUpdateItem(oAIMUser, _
+                                .ReadStringU16, _
+                                .ReadU16, _
+                                .ReadU16, _
+                                .ReadU16, _
+                                .ReadBytes(.ReadU16))
                         Loop
                     End With
                     
                     LogDebug "BOS", "Sending FEEDBAG__STATUS"
-                    BOSServer.SendSNAC Index, &H13, &HE, 0, RequestID, FeedbagStatus(oByteWriter.Buffer)
+                    BOSServer.SendSNAC Index, &H13, &HE, 0, RequestID, oByteWriter.Buffer
                     
                 ' =============================================================
                 Case &HA        ' FEEDBAG__DELETE_ITEM
@@ -1203,30 +1270,28 @@ Private Sub BOSServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long,
                     
                     With oByteReader
                         Do Until .IsEnd
-                            strName = .ReadStringU16
-                            lngGroupID = .ReadU16
-                            lngItemID = .ReadU16
-                            lngClassID = .ReadU16
-                            
-                            oTLVList.LoadChain .ReadBytes(.ReadU16)
-                            
-                            oByteWriter.WriteU16 FeedbagDeleteItem(oAIMSession, strName, lngGroupID, lngItemID, lngClassID, oTLVList)
+                            oByteWriter.WriteU16 FeedbagDeleteItem(oAIMUser, _
+                                .ReadStringU16, _
+                                .ReadU16, _
+                                .ReadU16, _
+                                .ReadU16, _
+                                .ReadBytes(.ReadU16))
                         Loop
                     End With
                     
                     LogDebug "BOS", "Sending FEEDBAG__STATUS"
-                    BOSServer.SendSNAC Index, &H13, &HE, 0, RequestID, FeedbagStatus(oByteWriter.Buffer)
+                    BOSServer.SendSNAC Index, &H13, &HE, 0, RequestID, oByteWriter.Buffer
                     
                 ' =============================================================
                 Case &H11       ' FEEDBAG__START_CLUSTER
                 ' =============================================================
-                    LogInformation "BOS", "Client has started data burst of inserting/updating/deleting feedbag items"
+                    ' Ignored
                     
                 ' =============================================================
                 Case &H12       ' FEEDBAG__END_CLUSTER
                 ' =============================================================
-                    LogInformation "BOS", "Client has ended data burst of inserting/updating/deleting feedbag items"
-                
+                    ' Ignored
+                    
                 Case Else
                     LogError "BOS", "Unknown SNAC - foodgroup: FEEDBAG, subgroup: 0x" & DecimalToHex(Subgroup)
             
@@ -1242,56 +1307,121 @@ Private Sub BOSServer_SignOffFrame(ByVal Index As Integer)
 End Sub
 
 Private Sub BOSServer_Disconnected(ByVal Index As Integer)
-    Dim oAIMSession As clsAIMSession
+    Dim oAIMUser As clsAIMSession
     
-    BOSServer.SendFrame Index, 4, GetEmptyByteArray
+    BOSServer.SendFrame Index, 4, GetEmptyBytes
     
-    For Each oAIMSession In oAIMSessionManager
-        If oAIMSession.Index = Index Then
-            oAIMSession.SignedOn = False
+    For Each oAIMUser In oAIMSessionManager
+        If oAIMUser.Index = Index Then
+            oAIMUser.SignedOn = False
             
-            'Call UpdateUserStatus(oAIMSession)
+            'Call UpdateUserStatus(oAIMUser)
             
-            oAIMSessionManager.Remove TrimData(oAIMSession.ScreenName)
-            LogInformation "BOS", "Removing session for " & oAIMSession.FormattedScreenName
+            oAIMSessionManager.Remove TrimData(oAIMUser.ScreenName)
+            LogInformation "BOS", "Removing session for " & oAIMUser.FormattedScreenName
         End If
-    Next oAIMSession
+    Next oAIMUser
 End Sub
 
-Private Sub cmdServerToggle_Click()
-    If blnServerToggle = False Then
-        StartServer
-    Else
-        StopServer
-    End If
-End Sub
+' ========================================
+' Stubs
+' ========================================
 
-Private Sub Form_Load()
-    blnServerToggle = False
+Private Sub AlertServer_Connected(ByVal Index As Integer, ByVal RemoteHost As String)
+    ' @todo
+    LogInformation "Alert", RemoteHost & " connected!"
     
-    frmMain.cmdServerToggle.Enabled = InitializeDatabase()
+    AlertServer.SendFrame Index, 1, DWord(1)
+End Sub
+
+Private Sub AlertServer_SignOnFrame(ByVal Index As Integer, Data() As Byte)
+    ' @todo
+End Sub
+
+Private Sub AlertServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long, ByVal Subgroup As Long, ByVal Flags As Long, ByVal RequestID As Double, SnacData() As Byte)
+    ' @todo
+End Sub
+
+Private Sub AlertServer_SignOffFrame(ByVal Index As Integer)
+     ' @todo
+End Sub
+
+Private Sub AlertServer_Disconnected(ByVal Index As Integer)
+     ' @todo
+End Sub
+
+' ========================================
+
+Private Sub AdminServer_Connected(ByVal Index As Integer, ByVal RemoteHost As String)
+    ' @todo
+    LogInformation "Admin", RemoteHost & " connected!"
     
-    SyncLocalSettings
+    AdminServer.SendFrame Index, 1, DWord(1)
 End Sub
 
-Private Sub Form_Unload(Cancel As Integer)
-    TerminateDatabase
+Private Sub AdminServer_SignOnFrame(ByVal Index As Integer, Data() As Byte)
+    ' @todo
 End Sub
 
+Private Sub AdminServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long, ByVal Subgroup As Long, ByVal Flags As Long, ByVal RequestID As Double, SnacData() As Byte)
+    ' @todo
+End Sub
+
+Private Sub AdminServer_SignOffFrame(ByVal Index As Integer)
+    ' @todo
+End Sub
+
+Private Sub AdminServer_Disconnected(ByVal Index As Integer)
+    ' @todo
+End Sub
+
+' ========================================
+
+Private Sub DirectoryServer_Connected(ByVal Index As Integer, ByVal RemoteHost As String)
+    ' @todo
+    LogInformation "Directory", RemoteHost & " connected!"
+    
+    DirectoryServer.SendFrame Index, 1, DWord(1)
+End Sub
+
+Private Sub DirectoryServer_SignOnFrame(ByVal Index As Integer, Data() As Byte)
+    ' @todo
+End Sub
+
+Private Sub DirectoryServer_DataFrame(ByVal Index As Integer, ByVal Foodgroup As Long, ByVal Subgroup As Long, ByVal Flags As Long, ByVal RequestID As Double, SnacData() As Byte)
+    ' @todo
+End Sub
+
+Private Sub DirectoryServer_SignOffFrame(ByVal Index As Integer)
+    ' @todo
+End Sub
+
+Private Sub DirectoryServer_Disconnected(ByVal Index As Integer)
+    ' @todo
+End Sub
+
+' ========================================
+' UI
+' ========================================
 Private Sub StartServer()
     blnServerToggle = True
     cmdApplySettings.Enabled = False
     cmdServerToggle.Caption = "Stop Server"
     
-    LogInformation "BUCP", "Server started on port " & AppSettings.Connection.BucpPort
-    BUCPServer.OpenServer AppSettings.Connection.BucpPort
+    LogInformation "BUCP", "Server started on port " & g_lngBucpPort
+    BUCPServer.OpenServer g_lngBucpPort
     
-    LogInformation "BOS", "Server started on port " & AppSettings.Connection.BosPort
-    BOSServer.OpenServer AppSettings.Connection.BosPort
+    LogInformation "BOS", "Server started on port " & g_lngBosPort
+    BOSServer.OpenServer g_lngBosPort
     
-    LogError "Alert", "Failed to start: not implemented"
-    LogError "Admin", "Failed to start: not implemented"
-    LogError "Directory", "Failed to start: not implemented"
+    LogInformation "Alert", "Server started on port " & g_lngAlertPort
+    AlertServer.OpenServer g_lngAlertPort
+    
+    LogInformation "Admin", "Server started on port " & g_lngAdminPort
+    AdminServer.OpenServer g_lngAdminPort
+    
+    LogInformation "Directory", "Server started on port " & g_lngDirectoryPort
+    DirectoryServer.OpenServer g_lngDirectoryPort
 End Sub
 
 Private Sub StopServer()
@@ -1304,79 +1434,48 @@ Private Sub StopServer()
     
     LogInformation "BOS", "Server stopped"
     BOSServer.CloseServer
-End Sub
-
-' TODO(subpurple): this settings code is kind of bad, I should rewrite it
-Private Sub SyncLocalSettings()
-    With AppSettings
-        ' Read connection-related settings:
-        txtServerHost.Text = .Connection.ServerHost
-        txtBucpServerPort.Text = CStr(.Connection.BucpPort)
-        txtBosServerPort.Text = CStr(.Connection.BosPort)
-        txtAlertServerPort.Text = CStr(.Connection.AlertPort)
-        txtAdminServerPort.Text = CStr(.Connection.AdminPort)
-        txtDirectoryServerPort.Text = CStr(.Connection.DirectoryPort)
-        
-        ' Read database-related settings:
-        cmbDbDriver.Text = .Database.Driver
-        txtDbHost.Text = .Database.Host
-        txtDbPort.Text = .Database.Port
-        txtDbUserId.Text = .Database.UserID
-        txtDbPassword.Text = .Database.Password
-        txtDbName.Text = .Database.Name
-        
-        ' Read error URL-related settings:
-        txtUnregisteredAcctUrl.Text = .ErrorURLs.UnregisteredAccount
-        txtIncorrectPasswdUrl.Text = .ErrorURLs.IncorrectPassword
-        txtSuspendedAcctUrl.Text = .ErrorURLs.SuspendedAccount
-        txtDeletedAcctUrl.Text = .ErrorURLs.DeletedAccount
-        txtPasswdChangeUrl.Text = .ErrorURLs.PasswordChange
-    End With
-End Sub
-
-Private Sub SyncUISettings()
-    With AppSettings
-        ' Write connection-related settings:
-        .Connection.ServerHost = txtServerHost.Text
-        .Connection.BucpPort = CLng(txtBucpServerPort.Text)
-        .Connection.BosPort = CLng(txtBosServerPort.Text)
-        .Connection.AlertPort = CLng(txtAlertServerPort.Text)
-        .Connection.AdminPort = CLng(txtAdminServerPort.Text)
-        .Connection.DirectoryPort = CLng(txtDirectoryServerPort.Text)
-        
-        ' Write database-related settings:
-        .Database.Driver = cmbDbDriver.Text
-        .Database.Host = txtDbHost.Text
-        .Database.Port = CLng(txtDbPort.Text)
-        .Database.UserID = txtDbUserId.Text
-        .Database.Password = txtDbPassword.Text
-        .Database.Name = txtDbName.Text
-        
-        ' Write error URL-related settings:
-        .ErrorURLs.UnregisteredAccount = txtUnregisteredAcctUrl.Text
-        .ErrorURLs.IncorrectPassword = txtIncorrectPasswdUrl.Text
-        .ErrorURLs.SuspendedAccount = txtSuspendedAcctUrl.Text
-        .ErrorURLs.DeletedAccount = txtDeletedAcctUrl.Text
-        .ErrorURLs.PasswordChange = txtPasswdChangeUrl.Text
-    End With
     
+    LogInformation "Alert", "Server stopped"
+    AlertServer.CloseServer
+    
+    LogInformation "Admin", "Server stopped"
+    AdminServer.CloseServer
+    
+    LogInformation "Directory", "Server stopped"
+    DirectoryServer.CloseServer
+End Sub
+
+Private Sub Form_Load()
+    blnServerToggle = False
+    
+    frmMain.cmdServerToggle.Enabled = InitializeDatabase()
+End Sub
+
+Private Sub Form_Unload(Cancel As Integer)
+    TerminateDatabase
+End Sub
+
+Private Sub cmdServerToggle_Click()
+    If blnServerToggle = False Then
+        StartServer
+    Else
+        StopServer
+    End If
+End Sub
+
+Private Sub cmdApplySettings_Click()
     WriteSettings
     
-    ' Re-try initializing the database if failed before
-    If cmdServerToggle.Enabled = False Then
-        cmdServerToggle.Enabled = InitializeDatabase()
+    MsgBox "These changes will take effect next time you relaunch the server.", vbInformation
+End Sub
+
+Private Sub lvwOnlineUsers_MouseUp(Button As Integer, Shift As Integer, X As Single, Y As Single)
+    If Button = vbRightButton Then
+        PopupMenu mnuUserActions
     End If
 End Sub
 
-Private Sub ValidateSetting(ByVal sFieldName As String, ByVal sFieldText As String, Optional ByVal blnNumerical As Boolean = False)
-    If Trim(sFieldText) = "" Then
-        Err.Raise vbObjectError, "frmMain.ValidateSetting", "The " & sFieldName & " field must not be blank!"
-    ElseIf (blnNumerical And Not IsNumeric(sFieldText)) Then
-        Err.Raise vbObjectError, "frmMain.ValidateSetting", "The " & sFieldName & " field must be numerical!"
-    End If
-End Sub
-
-Private Sub OnlyNumbers(ByRef KeyAscii As Integer)
+Private Sub EnsureKeyIsNumerical(ByRef KeyAscii As Integer)
     Select Case KeyAscii
         Case vbKey0 To vbKey9
         Case vbKeyBack, vbKeyClear, vbKeyDelete
@@ -1387,53 +1486,14 @@ Private Sub OnlyNumbers(ByRef KeyAscii As Integer)
     End Select
 End Sub
 
-Private Sub cmdApplySettings_Click()
-    On Error GoTo ErrorHandler
-    
-    ' Validate connection-related settings:
-    ValidateSetting "Server Host", txtServerHost.Text
-    ValidateSetting "BUCP Server Port", txtBucpServerPort.Text, True
-    ValidateSetting "BOS Server Port", txtBosServerPort.Text, True
-    ValidateSetting "Alert Server Port", txtAlertServerPort.Text, True
-    ValidateSetting "Admin Server Port", txtAdminServerPort.Text, True
-    ValidateSetting "Directory Server Port", txtDirectoryServerPort.Text, True
-    
-    ' Validate database-related settings:
-    ValidateSetting "Database Driver", cmbDbDriver.Text
-    ValidateSetting "Database Host", txtDbHost.Text
-    ValidateSetting "Database Port", txtDbPort.Text, True
-    ValidateSetting "Database User ID", txtDbUserId.Text
-    ValidateSetting "Database Password", txtDbPassword.Text
-    ValidateSetting "Database Name", txtDbName.Text
-    
-    ' Validate error URL-related settings:
-    ValidateSetting "Unregistered Account URL", txtUnregisteredAcctUrl.Text
-    ValidateSetting "Incorrect Password URL", txtIncorrectPasswdUrl.Text
-    ValidateSetting "Suspended Account URL", txtSuspendedAcctUrl.Text
-    ValidateSetting "Deleted Account URL", txtDeletedAcctUrl.Text
-    ValidateSetting "Password Change URL", txtPasswdChangeUrl.Text
-    
-    SyncUISettings
-    Exit Sub
-
-ErrorHandler:
-    MsgBox Err.Description, vbCritical
-End Sub
-
-Private Sub lvwOnlineUsers_MouseUp(Button As Integer, Shift As Integer, x As Single, y As Single)
-    If Button = vbRightButton Then
-        PopupMenu mnuUserActions
-    End If
-End Sub
-
 Private Sub txtBosServerPort_KeyPress(KeyAscii As Integer)
-    OnlyNumbers KeyAscii
+    EnsureKeyIsNumerical KeyAscii
 End Sub
 
 Private Sub txtBucpServerPort_KeyPress(KeyAscii As Integer)
-    OnlyNumbers KeyAscii
+    EnsureKeyIsNumerical KeyAscii
 End Sub
 
 Private Sub txtDbPort_KeyPress(KeyAscii As Integer)
-    OnlyNumbers KeyAscii
+    EnsureKeyIsNumerical KeyAscii
 End Sub
